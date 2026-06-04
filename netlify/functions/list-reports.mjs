@@ -9,9 +9,10 @@
 import { listDir, getFile } from './lib/github.mjs';
 import { resolveIdentity } from './lib/auth.mjs';
 
-const json = (body, status = 200) => new Response(JSON.stringify(body), {
-  status,
+const json = (body, status = 200) => ({
+  statusCode: status,
   headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+  body: JSON.stringify(body),
 });
 
 function safeDir(p) {
@@ -21,13 +22,12 @@ function safeDir(p) {
   return p;
 }
 
-export default async (req, context) => {
+export const handler = async (event, context) => {
   // History browsing requires login (CLAUDE.md §4); read is tier-independent.
   const identity = resolveIdentity(context.clientContext);
   if (!identity.loggedIn) return json({ error: 'login required to browse history' }, 401);
 
-  const url = new URL(req.url);
-  const dir = safeDir(url.searchParams.get('path'));
+  const dir = safeDir((event.queryStringParameters || {}).path);
   if (dir === null) return json({ error: 'invalid path' }, 400);
 
   let entries;

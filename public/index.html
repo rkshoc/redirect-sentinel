@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Redirect Sentinel</title>
+<link rel="stylesheet" href="/css/styles.css">
+<!-- Netlify Identity: roles -> tier limits (CLAUDE.md §4). -->
+<script src="https://identity.netlify.com/v1/netlify-identity-widget.js"></script>
+<!-- SheetJS: client-side .xlsx/.csv parsing to drive the column-map preview
+     and Excel export. All audit *logic* still runs server-side. -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+</head>
+<body>
+<div class="app">
+  <div class="top">
+    <div class="logo">Redirect<span class="dot">·</span>Sentinel</div>
+    <span class="badge">AEM · AKAMAI CONTRACT TEST</span>
+    <div class="who" id="who">
+      <span class="lim" id="whoLim">not logged in · ≤10 URLs</span>
+      <button id="authBtn">Log in</button>
+    </div>
+  </div>
+  <p class="sub">Validate that live redirects match your spec. Upload your rules sheet, audit every source URL, and verify each lands on its expected target — with the full hop chain and edge/origin detail per hop.</p>
+
+  <div class="tabs">
+    <button class="on" data-tab="0">New audit</button>
+    <button data-tab="1">Report</button>
+    <button data-tab="2">History</button>
+  </div>
+
+  <!-- ============ NEW AUDIT ============ -->
+  <div class="view on" id="v0">
+    <div class="banner err" id="auditErr"></div>
+    <div class="card">
+      <label>Upload rules sheet · .xlsx or .csv</label>
+      <div class="drop" id="drop">
+        <div class="ic">📄</div>
+        <div class="t">Drop your Excel/CSV here, or click to browse</div>
+        <div class="h">Expected columns: Rule Name · Source URL · Expected Target · (extra cols carried, ignored)</div>
+        <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" hidden>
+      </div>
+
+      <div id="mapBox" style="display:none">
+        <div class="map">
+          <h4 id="mapTitle">Detected columns — confirm mapping</h4>
+          <div class="maprow" id="mapRow"></div>
+        </div>
+      </div>
+
+      <div class="or">— or paste URLs directly (no expected-target check) —</div>
+      <textarea id="pasteBox" placeholder="https://www.example.com/old-products&#10;https://www.example.com/legacy/promo"></textarea>
+
+      <div class="field">
+        <label>Base URL (optional) — used to resolve relative paths like <code>/old-products</code></label>
+        <input class="text" id="baseUrl" placeholder="https://www.example.com">
+      </div>
+
+      <div class="runrow">
+        <button class="run" id="runBtn">Run audit →</button>
+        <span class="hint" id="runHint"></span>
+      </div>
+
+      <div class="prog" id="prog">
+        <div class="pbar"><div class="pfill" id="pfill"></div></div>
+        <div class="pmeta"><span id="pmsg">Starting…</span><span id="pcount"></span></div>
+      </div>
+    </div>
+    <div class="legend">
+      <i class="lak">Akamai edge</i><i class="laem">AEM dispatcher</i><i class="lor">AEM publish / origin</i>
+    </div>
+  </div>
+
+  <!-- ============ REPORT ============ -->
+  <div class="view" id="v1">
+    <div class="banner ok" id="reportBanner"></div>
+    <div id="reportBody"><div class="empty">No report loaded. Run an audit or open one from History.</div></div>
+  </div>
+
+  <!-- ============ HISTORY ============ -->
+  <div class="view" id="v2">
+    <div class="card">
+      <label>Past audits · any logged-in user has read access · folders in UTC</label>
+      <div class="htree" id="htree"><div class="empty" id="histEmpty">Log in to browse the audit archive.</div></div>
+      <p class="hint" style="margin-top:14px">Click any report to load and re-render it in the Report tab. Stored as JSON (data) + CSV (download) in the reports repo.</p>
+    </div>
+  </div>
+
+</div>
+
+<script type="module" src="/js/app.js"></script>
+</body>
+</html>

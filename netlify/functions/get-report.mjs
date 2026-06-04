@@ -11,9 +11,10 @@ import { getFile } from './lib/github.mjs';
 import { summarise } from './lib/report.mjs';
 import { VERDICT } from './lib/verdict.mjs';
 
-const json = (body, status = 200) => new Response(JSON.stringify(body), {
-  status,
+const json = (body, status = 200) => ({
+  statusCode: status,
   headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+  body: JSON.stringify(body),
 });
 
 // Only allow paths inside the YYYY/MM/DD tree ending in .json — no traversal.
@@ -51,9 +52,8 @@ function mergeDeepCheck(report, companion) {
   return report;
 }
 
-export default async (req) => {
-  const url = new URL(req.url);
-  const path = safePath(url.searchParams.get('path'));
+export const handler = async (event) => {
+  const path = safePath((event.queryStringParameters || {}).path);
   if (!path) return json({ error: 'invalid or missing report path' }, 400);
 
   let base;

@@ -1,0 +1,65 @@
+name: Deep-check (Playwright fallback)
+
+# Triggered by the Netlify Function via workflow_dispatch when the HTTP engine
+# is WAF-blocked (CLAUDE.md §3, §5). Runs Playwright from a GitHub runner — a
+# fresh IP + real browser — and writes a companion results file back to the
+# reports repo. Public repo => unlimited Actions minutes.
+
+on:
+  workflow_dispatch:
+    inputs:
+      report_path:
+        description: "Path of the base report in the reports repo (YYYY/MM/DD/...json)"
+        required: true
+      report_base:
+        description: "Base filename (without extension)"
+        required: true
+      reports_owner:
+        description: "Owner of the reports repo"
+        required: true
+      reports_repo:
+        description: "Name of the reports repo"
+        required: true
+      reports_branch:
+        description: "Branch of the reports repo"
+        required: false
+        default: "main"
+      urls:
+        description: "JSON array of blocked source URLs (informational; the script reads them from the report)"
+        required: false
+        default: "[]"
+
+concurrency:
+  # One deep-check per report at a time; never cancel an in-flight run.
+  group: deepcheck-${{ github.event.inputs.report_base }}
+  cancel-in-progress: false
+
+jobs:
+  deepcheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout app repo (for shared verdict/servertag logic)
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Playwright + Chromium
+        run: |
+          npm install playwright@1.49.0
+          npx playwright install --with-deps chromium
+
+      - name: Run deep-check
+        env:
+          # PAT with contents-write on the reports repo (the default GITHUB_TOKEN
+          # cannot write to a separate repo). Store as the REPORTS_TOKEN secret.
+          REPORTS_TOKEN: ${{ secrets.REPORTS_TOKEN }}
+          REPORTS_OWNER: ${{ github.event.inputs.reports_owner }}
+          REPORTS_REPO: ${{ github.event.inputs.reports_repo }}
+          REPORTS_BRANCH: ${{ github.event.inputs.reports_branch }}
+          REPORT_PATH: ${{ github.event.inputs.report_path }}
+          REPORT_BASE: ${{ github.event.inputs.report_base }}
+        run: node .github/scripts/deepcheck.mjs

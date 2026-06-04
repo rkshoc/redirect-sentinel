@@ -65,12 +65,16 @@ function batchOpts() {
   };
 }
 
-export default async (req, context) => {
+const json = (status, body) => ({ statusCode: status, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+
+// Classic (v1) handler signature: context.clientContext.user is populated by
+// Netlify's Identity integration when a valid JWT is sent (CLAUDE.md §4).
+export const handler = async (event, context) => {
   let payload;
   try {
-    payload = await req.json();
+    payload = JSON.parse(event.body || '{}');
   } catch {
-    return new Response('Bad request', { status: 400 });
+    return json(400, { error: 'Bad request' });
   }
 
   const identity = resolveIdentity(context.clientContext);
@@ -78,14 +82,14 @@ export default async (req, context) => {
 
   // SERVER-SIDE limit enforcement (CLAUDE.md §4) — never trust the browser.
   const limitErr = checkLimit(items.length, identity);
-  if (limitErr) {
-    return new Response(JSON.stringify({ error: limitErr.message }), {
-      status: limitErr.status,
-      headers: { 'Content-Type': 'application/json' },
-    });
-  }
+  if (limitErr) return json(limitErr.status, { error: limitErr.message });
 
-  const now = new Date();
+  // Use the client-supplied UTC timestamp + id so the browser can predict the
+  // archive path to poll (background functions return 202 with no body). The
+  // values only affect the filename, so trusting them is harmless; the user
+  // label still comes from the server-verified identity.
+  const ts = Date.parse(payload.timestamp || '');
+  const now = Number.isFinite(ts) ? new Date(ts) : new Date();
   const id = (payload.id && /^[a-z0-9]{2,12}$/i.test(payload.id)) ? payload.id : shortId();
   const userLabel = identity.user || 'anon';
   const paths = archivePaths(now, userLabel, id);
@@ -160,7 +164,7 @@ export default async (req, context) => {
     // Archival failed (likely misconfigured token). Surface it in logs; the
     // client poll will time out and show the error path.
     console.error('Archival failed:', e.message);
-    return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+    return json(500, { error: e.message });
   }
 
   // Dispatch Playwright deep-check for blocked URLs (CLAUDE.md §3).
@@ -181,10 +185,7 @@ export default async (req, context) => {
     }
   }
 
-  return new Response(JSON.stringify({ ok: true, report: paths.json }), {
-    status: 200,
-    headers: { 'Content-Type': 'application/json' },
-  });
+  return json(200, { ok: true, report: paths.json });
 };
 
 // Best-effort per-day index for the history view (CLAUDE.md §8). Index write
