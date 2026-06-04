@@ -1,0 +1,14 @@
+{
+  "name": "redirect-sentinel",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Audits AEM + Akamai HTTP redirects against a spec sheet (redirect contract test).",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "license": "MIT"
+}

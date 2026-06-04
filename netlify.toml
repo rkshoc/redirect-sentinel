@@ -1,0 +1,39 @@
+# Netlify configuration for Redirect Sentinel
+# The human deploys from the Netlify dashboard; this file pins the settings
+# so no local CLI is required.
+
+[build]
+  # Static frontend lives in /public. No build step — plain HTML/CSS/JS.
+  publish = "public"
+  functions = "netlify/functions"
+
+[functions]
+  # ESM source; bundle deps with esbuild. Functions are dependency-free
+  # (they use the global fetch in Node 18+), but esbuild is the modern default.
+  node_bundler = "esbuild"
+
+# Netlify Identity gates the >10-URL path. The audit engine is a *background*
+# function (name ends in -background) so it can run the full batched job up to
+# 15 minutes without the 10s sync-function timeout. It returns 202 immediately;
+# the browser polls get-report for the result.
+
+[[redirects]]
+  from = "/api/audit"
+  to = "/.netlify/functions/audit-background"
+  status = 200
+
+[[redirects]]
+  from = "/api/report"
+  to = "/.netlify/functions/get-report"
+  status = 200
+
+[[redirects]]
+  from = "/api/reports"
+  to = "/.netlify/functions/list-reports"
+  status = 200
+
+# SPA-ish fallback for the single-page app.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

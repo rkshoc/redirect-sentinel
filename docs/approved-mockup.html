@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Redirect Contract Auditor</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
+  :root{
+    --bg:#0c1016;--panel:#141a23;--panel2:#1b232f;--line:#283340;--line2:#323e4d;
+    --ink:#e8eef5;--muted:#8b98a9;--faint:#5a6878;
+    --ak:#ff7a45;--aem:#5aa9ff;--origin:#a78bfa;--unknown:#6b7785;
+    --pass:#3fb950;--fail:#f85149;--warn:#d29922;--blocked:#bc6bff;--info:#3b9eff;
+    --mono:'IBM Plex Mono',monospace;--sans:'IBM Plex Sans',sans-serif;--disp:'Fraunces',serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);min-height:100vh;
+    background-image:radial-gradient(circle at 12% -8%,rgba(90,169,255,.07),transparent 42%),radial-gradient(circle at 92% -5%,rgba(255,122,69,.05),transparent 38%);}
+  .app{max-width:1140px;margin:0 auto;padding:26px 22px 60px}
+
+  /* top bar */
+  .top{display:flex;align-items:center;gap:14px;margin-bottom:8px}
+  .logo{font-family:var(--disp);font-weight:700;font-size:24px;letter-spacing:-.5px}
+  .logo .dot{color:var(--ak)}
+  .badge{font-family:var(--mono);font-size:10.5px;color:var(--muted);border:1px solid var(--line);padding:3px 9px;border-radius:6px;letter-spacing:.4px}
+  .who{margin-left:auto;display:flex;align-items:center;gap:10px;font-family:var(--mono);font-size:12px}
+  .who .role{color:var(--aem);border:1px solid var(--line);padding:4px 10px;border-radius:20px}
+  .who .lim{color:var(--faint)}
+  .sub{color:var(--muted);font-size:13.5px;margin:2px 0 22px;max-width:640px;line-height:1.55}
+
+  /* tabs */
+  .tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:24px}
+  .tabs button{background:none;border:none;color:var(--muted);font-family:var(--mono);font-size:13px;
+    padding:11px 16px;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+  .tabs button.on{color:var(--ink);border-bottom-color:var(--ak)}
+  .view{display:none}.view.on{display:block;animation:fade .3s ease}
+  @keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px;margin-bottom:20px}
+  label{display:block;font-size:11px;color:var(--muted);font-family:var(--mono);text-transform:uppercase;letter-spacing:.5px;margin-bottom:9px}
+
+  /* upload */
+  .drop{border:1.5px dashed var(--line2);border-radius:12px;padding:30px;text-align:center;cursor:pointer;transition:.15s;background:var(--bg)}
+  .drop:hover{border-color:var(--aem);background:var(--panel2)}
+  .drop .ic{font-size:30px;margin-bottom:8px}
+  .drop .t{font-size:14px;font-weight:600}
+  .drop .h{font-family:var(--mono);font-size:11.5px;color:var(--faint);margin-top:5px}
+  .or{text-align:center;color:var(--faint);font-family:var(--mono);font-size:11px;margin:16px 0}
+  textarea{width:100%;min-height:80px;background:var(--bg);border:1px solid var(--line);border-radius:10px;color:var(--ink);font-family:var(--mono);font-size:13px;padding:12px;resize:vertical;line-height:1.6}
+  textarea:focus{outline:none;border-color:var(--aem)}
+
+  /* column map */
+  .map{background:var(--panel2);border:1px solid var(--line);border-radius:11px;padding:16px;margin-top:16px}
+  .map h4{font-family:var(--mono);font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;font-weight:500}
+  .maprow{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px}
+  .mapcol{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px}
+  .mapcol .cn{font-family:var(--mono);font-size:10px;color:var(--faint)}
+  .mapcol .cv{font-family:var(--mono);font-size:12px;margin-top:3px}
+  .mapcol.key{border-color:var(--aem)}
+  .mapcol.key .cn{color:var(--aem)}
+  .mapcol.ign{opacity:.5}
+
+  .run{background:var(--ak);color:#1a0c05;border:none;font-family:var(--mono);font-weight:600;font-size:13px;padding:12px 24px;border-radius:9px;cursor:pointer;transition:.15s}
+  .run:hover{filter:brightness(1.08)}
+  .runrow{display:flex;align-items:center;gap:14px;margin-top:18px}
+  .hint{font-family:var(--mono);font-size:11.5px;color:var(--faint)}
+
+  /* progress */
+  .prog{margin-top:18px;display:none}
+  .prog.show{display:block}
+  .pbar{height:7px;background:var(--bg);border-radius:5px;overflow:hidden;border:1px solid var(--line)}
+  .pfill{height:100%;width:62%;background:linear-gradient(90deg,var(--aem),var(--ak));border-radius:5px;transition:width .4s}
+  .pmeta{display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:8px}
+
+  /* summary */
+  .sumgrid{display:grid;grid-template-columns:repeat(5,1fr);gap:11px;margin-bottom:20px}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:15px 16px;position:relative;overflow:hidden}
+  .stat::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px}
+  .stat.p::before{background:var(--pass)}.stat.f::before{background:var(--fail)}
+  .stat.b::before{background:var(--blocked)}.stat.t::before{background:var(--info)}.stat.n::before{background:var(--muted)}
+  .stat .n{font-family:var(--disp);font-size:25px;font-weight:600}
+  .stat .l{font-family:var(--mono);font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-top:2px}
+
+  /* filter bar */
+  .fbar{display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
+  .chip{font-family:var(--mono);font-size:11.5px;padding:6px 12px;border-radius:20px;border:1px solid var(--line);color:var(--muted);background:var(--panel);cursor:pointer;transition:.12s}
+  .chip:hover{border-color:var(--line2);color:var(--ink)}
+  .chip.on{background:var(--panel2);color:var(--ink);border-color:var(--ak)}
+  .search{margin-left:auto;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:7px 12px;color:var(--ink);font-family:var(--mono);font-size:12px;width:180px}
+  .search:focus{outline:none;border-color:var(--aem)}
+  .exp{background:var(--panel);border:1px solid var(--line);color:var(--muted);font-family:var(--mono);font-size:11.5px;padding:7px 12px;border-radius:8px;cursor:pointer}
+
+  /* result row */
+  .res{background:var(--panel);border:1px solid var(--line);border-radius:12px;margin-bottom:11px;overflow:hidden}
+  .res.fail{border-left:3px solid var(--fail)}
+  .res.pass{border-left:3px solid var(--pass)}
+  .res.blocked{border-left:3px solid var(--blocked)}
+  .rhead{display:grid;grid-template-columns:auto 1fr auto;gap:13px;align-items:center;padding:14px 18px;cursor:pointer}
+  .rhead:hover{background:var(--panel2)}
+  .vtag{font-family:var(--mono);font-size:10.5px;font-weight:600;padding:4px 10px;border-radius:6px;white-space:nowrap}
+  .vtag.pass{background:rgba(63,185,80,.14);color:var(--pass);border:1px solid rgba(63,185,80,.3)}
+  .vtag.fail{background:rgba(248,81,73,.14);color:var(--fail);border:1px solid rgba(248,81,73,.3)}
+  .vtag.blocked{background:rgba(188,107,255,.14);color:var(--blocked);border:1px solid rgba(188,107,255,.3)}
+  .rname{min-width:0}
+  .rname .rule{font-family:var(--mono);font-size:12.5px;color:var(--ink);font-weight:500}
+  .rname .src{font-family:var(--mono);font-size:11px;color:var(--faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px}
+  .rmeta{display:flex;gap:7px;align-items:center}
+  .mini{font-family:var(--mono);font-size:10.5px;color:var(--muted);border:1px solid var(--line);padding:3px 7px;border-radius:5px}
+  .chev{color:var(--faint);font-size:11px;transition:.2s}
+  .rhead.open .chev{transform:rotate(90deg)}
+
+  .detail{display:none;padding:4px 18px 18px;border-top:1px solid var(--line)}
+  .detail.show{display:block}
+  .cmp{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:14px 0}
+  .cmp .box{background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:12px}
+  .cmp .bl{font-family:var(--mono);font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
+  .cmp .bv{font-family:var(--mono);font-size:12.5px;word-break:break-all;line-height:1.5}
+  .cmp .box.exp{border-color:rgba(90,169,255,.3)}
+  .cmp .box.got.bad{border-color:rgba(248,81,73,.4)}
+  .cmp .box.got.good{border-color:rgba(63,185,80,.4)}
+  .reason{font-family:var(--mono);font-size:11.5px;padding:9px 12px;border-radius:8px;margin-bottom:12px;line-height:1.5}
+  .reason.bad{background:rgba(248,81,73,.08);color:#ffb3ae;border:1px solid rgba(248,81,73,.2)}
+  .reason.warn{background:rgba(210,153,34,.08);color:#f0cd7a;border:1px solid rgba(210,153,34,.2)}
+  .reason.ok{background:rgba(63,185,80,.08);color:#9ae6a4;border:1px solid rgba(63,185,80,.2)}
+
+  .chaintitle{font-family:var(--mono);font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.5px;margin:6px 0 10px}
+  .hop{display:flex;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
+  .hop:last-child{border:none}
+  .hopn{font-family:var(--mono);font-size:10px;color:var(--faint);width:42px;flex-shrink:0;padding-top:2px}
+  .hopbody{flex:1;min-width:0}
+  .hu{font-family:var(--mono);font-size:11.5px;word-break:break-all;margin-bottom:6px}
+  .hu .ar{color:var(--faint);margin-right:5px}
+  .hb{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+  .b{font-family:var(--mono);font-size:10px;padding:2px 7px;border-radius:4px;font-weight:500}
+  .b.s301{background:rgba(63,185,80,.13);color:var(--pass)}
+  .b.s302{background:rgba(210,153,34,.13);color:var(--warn)}
+  .b.s200{background:rgba(59,158,255,.13);color:var(--info)}
+  .b.s403{background:rgba(188,107,255,.13);color:var(--blocked)}
+  .b.s404{background:rgba(248,81,73,.13);color:var(--fail)}
+  .srv{font-family:var(--mono);font-size:10px;padding:2px 7px;border-radius:4px;border:1px solid}
+  .srv.akamai{color:var(--ak);border-color:rgba(255,122,69,.3);background:rgba(255,122,69,.07)}
+  .srv.aem{color:var(--aem);border-color:rgba(90,169,255,.3);background:rgba(90,169,255,.07)}
+  .srv.origin{color:var(--origin);border-color:rgba(167,139,250,.3);background:rgba(167,139,250,.07)}
+  .srv.unknown{color:var(--unknown);border-color:var(--line)}
+  .tm{font-family:var(--mono);font-size:10px;color:var(--faint);margin-left:auto}
+
+  /* deep-check pending */
+  .pending{background:rgba(188,107,255,.06);border:1px solid rgba(188,107,255,.25)}
+  .pending .rhead{cursor:default}
+  .spin{width:13px;height:13px;border:2px solid rgba(188,107,255,.3);border-top-color:var(--blocked);border-radius:50%;animation:sp 1s linear infinite;display:inline-block}
+  @keyframes sp{to{transform:rotate(360deg)}}
+
+  /* history */
+  .htree{font-family:var(--mono);font-size:13px}
+  .hyear{margin-bottom:6px}
+  .hnode{padding:8px 12px;border-radius:8px;cursor:pointer;display:flex;align-items:center;gap:9px;color:var(--ink)}
+  .hnode:hover{background:var(--panel2)}
+  .hnode .tw{color:var(--faint);font-size:11px}
+  .hmonth{margin-left:18px}.hday{margin-left:18px}
+  .hfile{margin-left:36px;padding:7px 12px;border-radius:8px;cursor:pointer;display:flex;align-items:center;gap:10px;font-size:12px}
+  .hfile:hover{background:var(--panel2)}
+  .hfile .fi{color:var(--aem)}
+  .hfile .fmeta{margin-left:auto;display:flex;gap:7px}
+  .hpass{color:var(--pass);font-size:11px}.hfailc{color:var(--fail);font-size:11px}
+  .huser{color:var(--faint);font-size:11px}
+  .legend{font-family:var(--mono);font-size:10.5px;color:var(--faint);display:flex;gap:15px;flex-wrap:wrap;margin-top:12px}
+  .legend i{font-style:normal;display:inline-flex;gap:5px;align-items:center}
+  .legend i::before{content:"";width:8px;height:8px;border-radius:2px}
+  .legend .lak::before{background:var(--ak)}.legend .laem::before{background:var(--aem)}.legend .lor::before{background:var(--origin)}
+  @media(max-width:720px){.sumgrid{grid-template-columns:repeat(2,1fr)}.maprow{grid-template-columns:1fr 1fr}.cmp{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="top">
+    <div class="logo">Redirect<span class="dot">·</span>Auditor</div>
+    <span class="badge">AEM · AKAMAI CONTRACT TEST</span>
+    <div class="who">
+      <span class="role">admin</span>
+      <span class="lim">limit 100 · logged in</span>
+    </div>
+  </div>
+  <p class="sub">Validate that live redirects match your spec. Upload your rules sheet, audit every source URL, and verify each lands on its expected target — with the full hop chain and edge/origin detail per hop.</p>
+
+  <div class="tabs">
+    <button class="on" onclick="tab(0,this)">New audit</button>
+    <button onclick="tab(1,this)">Report</button>
+    <button onclick="tab(2,this)">History</button>
+  </div>
+
+  <!-- ============ NEW AUDIT ============ -->
+  <div class="view on" id="v0">
+    <div class="card">
+      <label>Upload rules sheet · .xlsx or .csv</label>
+      <div class="drop" onclick="document.getElementById('mapBox').style.display='block'">
+        <div class="ic">📄</div>
+        <div class="t">Drop your Excel/CSV here, or click to browse</div>
+        <div class="h">Expected columns: Rule Name · Source URL · Expected Target · (extra cols carried, ignored)</div>
+      </div>
+
+      <div id="mapBox" style="display:none">
+        <div class="map">
+          <h4>✓ Detected columns — confirm mapping (284 rows)</h4>
+          <div class="maprow">
+            <div class="mapcol"><div class="cn">Col A → Rule Name</div><div class="cv">REDIR_PROMO_01…</div></div>
+            <div class="mapcol key"><div class="cn">Col B → Source ★</div><div class="cv">/old-products …</div></div>
+            <div class="mapcol key"><div class="cn">Col C → Expected ★</div><div class="cv">/us/en/products …</div></div>
+            <div class="mapcol ign"><div class="cn">Col D · ignored</div><div class="cv">status notes</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="or">— or paste URLs directly (no expected-target check) —</div>
+      <textarea placeholder="https://www.example.com/old-products&#10;https://www.example.com/legacy/promo">https://www.example.com/old-products</textarea>
+
+      <div class="runrow">
+        <button class="run" onclick="startRun()">Run audit →</button>
+        <span class="hint">284 rules · large batch → auto-chunked (~30/batch) to stay under WAF limit · ~2 min</span>
+      </div>
+
+      <div class="prog" id="prog">
+        <div class="pbar"><div class="pfill"></div></div>
+        <div class="pmeta"><span>Batch 6 of 10 · checking via HTTP…</span><span>176 / 284 done · 4 fell back to deep-check</span></div>
+      </div>
+    </div>
+    <div class="legend">
+      <i class="lak">Akamai edge</i><i class="laem">AEM dispatcher</i><i class="lor">AEM publish / origin</i>
+    </div>
+  </div>
+
+  <!-- ============ REPORT ============ -->
+  <div class="view" id="v1">
+    <div class="sumgrid">
+      <div class="stat n"><div class="n">284</div><div class="l">Rules checked</div></div>
+      <div class="stat p"><div class="n" style="color:var(--pass)">251</div><div class="l">Passed</div></div>
+      <div class="stat f"><div class="n" style="color:var(--fail)">24</div><div class="l">Failed</div></div>
+      <div class="stat b"><div class="n" style="color:var(--blocked)">5</div><div class="l">Blocked</div></div>
+      <div class="stat t"><div class="n" style="color:var(--info)">4</div><div class="l">Deep-checked</div></div>
+    </div>
+
+    <div class="fbar">
+      <span class="chip on">All (284)</span>
+      <span class="chip">Failures first (24)</span>
+      <span class="chip">Blocked (5)</span>
+      <span class="chip">302 present</span>
+      <span class="chip">Chains &gt; 2 hops</span>
+      <input class="search" placeholder="search rule / url…">
+    </div>
+    <div style="display:flex;gap:9px;margin-bottom:14px">
+      <button class="exp">Expand all</button>
+      <button class="exp">⬇ Export Excel (+ verdict cols)</button>
+      <button class="exp">⬇ Export JSON</button>
+      <span class="hint" style="margin-left:auto;align-self:center">archived → reports/2026/06/04/audit_2026-06-04T1620Z_admin_a3f9</span>
+    </div>
+
+    <!-- FAIL: wrong target -->
+    <div class="res fail">
+      <div class="rhead open" onclick="tog(this)">
+        <span class="vtag fail">✕ FAIL</span>
+        <span class="rname"><div class="rule">REDIR_PROD_MIGRATE_07</div><div class="src">/old-products  →  expected /us/en/products</div></span>
+        <span class="rmeta"><span class="mini">3 hops</span><span class="mini">wrong target</span><span class="chev">▶</span></span>
+      </div>
+      <div class="detail show">
+        <div class="reason bad">⚠ Real mismatch — landed on a different path than the spec. Expected <b>/us/en/products</b>, got <b>/products</b>. Not a trivial slash/case difference.</div>
+        <div class="cmp">
+          <div class="box exp"><div class="bl">Expected (from sheet)</div><div class="bv">https://www.example.com/us/en/products</div></div>
+          <div class="box got bad"><div class="bl">Actual final</div><div class="bv">https://www.example.com/products</div></div>
+        </div>
+        <div class="chaintitle">Hop chain</div>
+        <div class="hop"><div class="hopn">1</div><div class="hopbody"><div class="hu">/old-products</div><div class="hb"><span class="b s301">301</span><span class="srv akamai">Akamai edge</span><span class="tm">42ms</span></div></div></div>
+        <div class="hop"><div class="hopn">2</div><div class="hopbody"><div class="hu"><span class="ar">↳</span>/products</div><div class="hb"><span class="b s301">301</span><span class="srv aem">AEM dispatcher</span><span class="tm">88ms</span></div></div></div>
+        <div class="hop"><div class="hopn">3</div><div class="hopbody"><div class="hu"><span class="ar">↳</span>/products <span style="color:var(--faint)">(final)</span></div><div class="hb"><span class="b s200">200</span><span class="srv origin">AEM publish</span><span class="tm">120ms</span></div></div></div>
+      </div>
+    </div>
+
+    <!-- FAIL: trivial -->
+    <div class="res fail">
+      <div class="rhead" onclick="tog(this)">
+        <span class="vtag fail">✕ FAIL</span>
+        <span class="rname"><div class="rule">REDIR_CART_LEGACY_02</div><div class="src">/cart-old  →  expected /cart</div></span>
+        <span class="rmeta"><span class="mini">2 hops</span><span class="mini">trivial diff</span><span class="chev">▶</span></span>
+      </div>
+      <div class="detail">
+        <div class="reason warn">Trivial difference only — differs by <b>trailing slash</b>. Expected <b>/cart</b>, got <b>/cart/</b>. Strict mode marks this FAIL; likely safe to accept or fix the rule.</div>
+        <div class="cmp">
+          <div class="box exp"><div class="bl">Expected</div><div class="bv">https://shop.example.com/cart</div></div>
+          <div class="box got bad"><div class="bl">Actual final</div><div class="bv">https://shop.example.com/cart/</div></div>
+        </div>
+        <div class="chaintitle">Hop chain</div>
+        <div class="hop"><div class="hopn">1</div><div class="hopbody"><div class="hu">/cart-old</div><div class="hb"><span class="b s301">301</span><span class="srv akamai">Akamai edge</span><span class="tm">51ms</span></div></div></div>
+        <div class="hop"><div class="hopn">2</div><div class="hopbody"><div class="hu"><span class="ar">↳</span>/cart/ <span style="color:var(--faint)">(final)</span></div><div class="hb"><span class="b s200">200</span><span class="srv unknown">origin · masked</span><span class="tm">95ms</span></div></div></div>
+      </div>
+    </div>
+
+    <!-- BLOCKED then deep-check pending -->
+    <div class="res pending">
+      <div class="rhead">
+        <span class="vtag blocked">◷ DEEP-CHECK</span>
+        <span class="rname"><div class="rule">REDIR_CAMPAIGN_11</div><div class="src">/legacy/promo-2023 · HTTP got 403 → re-running via Playwright</div></span>
+        <span class="rmeta"><span class="spin"></span><span class="mini">~1 min</span></span>
+      </div>
+    </div>
+
+    <!-- PASS -->
+    <div class="res pass">
+      <div class="rhead" onclick="tog(this)">
+        <span class="vtag pass">✓ PASS</span>
+        <span class="rname"><div class="rule">REDIR_BLOG_RENAME_19</div><div class="src">/news/old  →  expected /insights</div></span>
+        <span class="rmeta"><span class="mini">1 hop</span><span class="mini">301</span><span class="chev">▶</span></span>
+      </div>
+      <div class="detail">
+        <div class="reason ok">✓ Exact match. Final URL equals expected target. Clean single 301.</div>
+        <div class="cmp">
+          <div class="box exp"><div class="bl">Expected</div><div class="bv">https://www.example.com/insights</div></div>
+          <div class="box got good"><div class="bl">Actual final</div><div class="bv">https://www.example.com/insights</div></div>
+        </div>
+        <div class="chaintitle">Hop chain</div>
+        <div class="hop"><div class="hopn">1</div><div class="hopbody"><div class="hu">/news/old</div><div class="hb"><span class="b s301">301</span><span class="srv akamai">Akamai edge</span><span class="tm">39ms</span></div></div></div>
+        <div class="hop"><div class="hopn">2</div><div class="hopbody"><div class="hu"><span class="ar">↳</span>/insights <span style="color:var(--faint)">(final)</span></div><div class="hb"><span class="b s200">200</span><span class="srv origin">AEM publish</span><span class="tm">101ms</span></div></div></div>
+      </div>
+    </div>
+
+    <!-- FAIL broken -->
+    <div class="res fail">
+      <div class="rhead" onclick="tog(this)">
+        <span class="vtag fail">✕ FAIL</span>
+        <span class="rname"><div class="rule">REDIR_SUPPORT_04</div><div class="src">/help-old  →  expected /support</div></span>
+        <span class="rmeta"><span class="mini">2 hops</span><span class="mini">broken 404</span><span class="chev">▶</span></span>
+      </div>
+      <div class="detail">
+        <div class="reason bad">⚠ Broken — chain ends in <b>404 Not Found</b>. The target page is dead.</div>
+        <div class="cmp">
+          <div class="box exp"><div class="bl">Expected</div><div class="bv">https://www.example.com/support</div></div>
+          <div class="box got bad"><div class="bl">Actual final</div><div class="bv">https://www.example.com/support · 404</div></div>
+        </div>
+        <div class="chaintitle">Hop chain</div>
+        <div class="hop"><div class="hopn">1</div><div class="hopbody"><div class="hu">/help-old</div><div class="hb"><span class="b s301">301</span><span class="srv akamai">Akamai edge</span><span class="tm">44ms</span></div></div></div>
+        <div class="hop"><div class="hopn">2</div><div class="hopbody"><div class="hu"><span class="ar">↳</span>/support <span style="color:var(--faint)">(final)</span></div><div class="hb"><span class="b s404">404</span><span class="srv origin">AEM publish</span><span class="tm">76ms</span></div></div></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ============ HISTORY ============ -->
+  <div class="view" id="v2">
+    <div class="card">
+      <label>Past audits · any logged-in user has read access · folders in UTC</label>
+      <div class="htree">
+        <div class="hyear">
+          <div class="hnode" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'"><span class="tw">▾</span>📁 2026</div>
+          <div class="hmonth">
+            <div class="hnode"><span class="tw">▾</span>📁 07 · July</div>
+            <div class="hday">
+              <div class="hfile"><span class="fi">📄</span> audit_2026-07-01T1100Z_basit <span class="fmeta"><span class="huser">basit</span><span class="hpass">12 ✓</span><span class="hfailc">1 ✕</span></span></div>
+            </div>
+            <div class="hnode"><span class="tw">▾</span>📁 06 · June</div>
+            <div class="hday">
+              <div class="hfile" onclick="tab(1,document.querySelectorAll('.tabs button')[1])"><span class="fi">📄</span> audit_2026-06-04T1620Z_admin_a3f9 <span class="fmeta"><span class="huser">admin</span><span class="hpass">251 ✓</span><span class="hfailc">24 ✕</span></span></div>
+              <div class="hfile"><span class="fi">📄</span> audit_2026-06-04T1415Z_advanced_7c2e <span class="fmeta"><span class="huser">advanced</span><span class="hpass">48 ✓</span><span class="hfailc">2 ✕</span></span></div>
+              <div class="hfile"><span class="fi">📄</span> audit_2026-06-04T0930Z_basit_1f0a <span class="fmeta"><span class="huser">basit</span><span class="hpass">9 ✓</span><span class="hfailc">0 ✕</span></span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="hint" style="margin-top:14px">Click any report to load and re-render it in the Report tab. Stored as JSON (data) + CSV (download) in the reports repo.</p>
+    </div>
+  </div>
+
+</div>
+<script>
+  function tab(i,el){
+    document.querySelectorAll('.tabs button').forEach(b=>b.classList.remove('on'));
+    el.classList.add('on');
+    document.querySelectorAll('.view').forEach((v,n)=>v.classList.toggle('on',n===i));
+    window.scrollTo({top:0,behavior:'smooth'});
+  }
+  function tog(el){el.classList.toggle('open');el.nextElementSibling.classList.toggle('show')}
+  function startRun(){
+    document.getElementById('prog').classList.add('show');
+    setTimeout(()=>{tab(1,document.querySelectorAll('.tabs button')[1])},1400);
+  }
+</script>
+</body>
+</html>
