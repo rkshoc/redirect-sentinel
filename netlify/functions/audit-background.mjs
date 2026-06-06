@@ -67,9 +67,17 @@ function batchOpts() {
 
 const json = (status, body) => ({ statusCode: status, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 
-// Classic (v1) handler signature: context.clientContext.user is populated by
-// Netlify's Identity integration when a valid JWT is sent (CLAUDE.md §4).
+// Background worker. Netlify does NOT populate clientContext.user for background
+// functions, so identity is resolved by the sync `audit` gatekeeper and passed
+// in (verified) via `_identity`. The gatekeeper authenticates with an internal
+// shared secret so this public endpoint can't be called directly to bypass the
+// tier limits (CLAUDE.md §4).
 export const handler = async (event, context) => {
+  const headers = event.headers || {};
+  const token = headers['x-internal-token'] || headers['X-Internal-Token'] || '';
+  const expected = process.env.INTERNAL_TOKEN || process.env.GITHUB_TOKEN || '';
+  if (!expected || token !== expected) return json(403, { error: 'forbidden' });
+
   let payload;
   try {
     payload = JSON.parse(event.body || '{}');
@@ -77,22 +85,23 @@ export const handler = async (event, context) => {
     return json(400, { error: 'Bad request' });
   }
 
-  const identity = resolveIdentity(context.clientContext);
+  // Prefer the identity verified by the gatekeeper; fall back to clientContext.
+  const identity = payload._identity || resolveIdentity(context.clientContext);
   const items = buildItems(payload);
 
-  // SERVER-SIDE limit enforcement (CLAUDE.md §4) — never trust the browser.
+  // Defensive re-check (the gatekeeper already enforced this).
   const limitErr = checkLimit(items.length, identity);
   if (limitErr) return json(limitErr.status, { error: limitErr.message });
 
-  // Use the client-supplied UTC timestamp + id so the browser can predict the
-  // archive path to poll (background functions return 202 with no body). The
-  // values only affect the filename, so trusting them is harmless; the user
-  // label still comes from the server-verified identity.
-  const ts = Date.parse(payload.timestamp || '');
-  const now = Number.isFinite(ts) ? new Date(ts) : new Date();
-  const id = (payload.id && /^[a-z0-9]{2,12}$/i.test(payload.id)) ? payload.id : shortId();
+  // The gatekeeper computed the authoritative archive path from the verified
+  // identity and returned it to the browser, so we write to exactly that path.
+  const now = payload._now ? new Date(payload._now) : new Date();
   const userLabel = identity.user || 'anon';
-  const paths = archivePaths(now, userLabel, id);
+  const paths = payload._paths || archivePaths(
+    now, userLabel,
+    (payload.id && /^[a-z0-9]{2,12}$/i.test(payload.id)) ? payload.id : shortId(),
+  );
+  const id = payload.id || paths.base.split('_').pop();
 
   // Run the audit. Background functions can take their time, so we await fully.
   // (Netlify returns 202 to the client the moment this handler was invoked.)
@@ -198,9 +207,12 @@ async function updateDayIndex(paths, report) {
   if (existing) {
     try { index = JSON.parse(existing.content); } catch { /* keep fresh */ }
   }
-  index.audits = (index.audits || []).filter((a) => a.file !== `${paths.base}.json`);
+  // Store the FULL path (incl. YYYY/MM/DD/) so the history view can open it
+  // directly via get-report, which requires the dated path.
+  index.audits = (index.audits || []).filter((a) => a.file !== paths.json && a.file !== `${paths.base}.json`);
   index.audits.push({
-    file: `${paths.base}.json`,
+    file: paths.json,
+    name: paths.base,
     id: report.id,
     user: report.user,
     createdUtc: report.createdUtc,

@@ -171,25 +171,26 @@ async function runAudit() {
   $('runBtn').disabled = true;
   startProgress(n);
 
-  let res;
+  // The sync gatekeeper authenticates, enforces the limit, starts the worker,
+  // and returns the authoritative report path to poll.
+  let res, data;
   try {
     res = await fetch('/api/audit', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
       body: JSON.stringify(payload),
     });
+    data = await res.json().catch(() => ({}));
   } catch (e) {
     stopProgress(); $('runBtn').disabled = false; showErr(`Network error: ${e.message}`); return;
   }
 
-  // Background functions return 202 (accepted). A 4xx is a hard rejection.
-  if (res.status >= 400 && res.status !== 404) {
+  if (!res.ok) {
     stopProgress(); $('runBtn').disabled = false;
-    const msg = (await res.json().catch(() => ({}))).error || `Request rejected (HTTP ${res.status}).`;
-    showErr(msg); return;
+    showErr(data.error || `Request rejected (HTTP ${res.status}).`); return;
   }
 
-  pollReport(path);
+  pollReport(data.path || path);
 }
 
 // ---------- Progress (time-estimate; the background fn doesn't stream) ----------

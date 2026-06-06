@@ -44,7 +44,15 @@ export const handler = async (event, context) => {
     if (idx) {
       try {
         const file = await getFile(`${dir}/index.json`);
-        if (file) return json({ dir, kind: 'audits', audits: JSON.parse(file.content).audits || [] });
+        if (file) {
+          // Normalise legacy entries that stored a bare filename (no dated
+          // prefix) so the history view can open them via get-report.
+          const audits = (JSON.parse(file.content).audits || []).map((a) => {
+            const f = a.file && a.file.includes('/') ? a.file : `${dir}/${a.file}`;
+            return { ...a, file: f, name: a.name || (a.file || '').replace(/^.*\//, '').replace(/\.json$/, '') };
+          });
+          return json({ dir, kind: 'audits', audits });
+        }
       } catch { /* fall through to raw listing */ }
     }
     // No index — list the .json audit files directly.
