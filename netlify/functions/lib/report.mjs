@@ -52,15 +52,29 @@ export function toCSV(report) {
     for (const k of Object.keys(r.extra || {})) if (!extraKeys.includes(k)) extraKeys.push(k);
   }
   const headerCols = ['Rule Name', 'Source URL', 'Expected Target', ...extraKeys,
-    'Actual Target', 'Verdict', 'Hop Count', 'Reason'];
+    'Actual Target', 'Verdict', 'Hop Count', 'Reason', 'Hop Chain'];
   const lines = [headerCols.map(csvCell).join(',')];
   for (const r of report.rows) {
     const row = [
       r.ruleName, r.source, r.expected,
       ...extraKeys.map((k) => (r.extra ? r.extra[k] : '')),
-      r.finalUrl, r.verdict, r.hopCount, r.reason || '',
+      r.finalUrl, r.verdict, r.hopCount, r.reason || '', hopChainText(r.hops),
     ];
     lines.push(row.map(csvCell).join(','));
   }
   return lines.join('\r\n');
+}
+
+const SERVER_LABEL = { akamai: 'Akamai edge', dispatcher: 'AEM dispatcher', origin: 'AEM publish', unknown: 'origin · masked' };
+
+// Full redirect chain as readable text — every hop, not just first/last.
+function hopChainText(hops) {
+  if (!hops || !hops.length) return '';
+  return hops.map((h, i) => {
+    const code = h.status || h.error || 'err';
+    const srv = SERVER_LABEL[h.server] || h.server || 'unknown';
+    const t = h.timeMs != null ? ` · ${h.timeMs}ms` : '';
+    const fin = i === hops.length - 1 ? ' (final)' : '';
+    return `#${h.n != null ? h.n : i + 1} ${h.url} [${code} · ${srv}${t}]${fin}`;
+  }).join('\n');
 }

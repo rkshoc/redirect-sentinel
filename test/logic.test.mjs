@@ -98,12 +98,19 @@ test('user label is sanitised in filename', () => {
 // ---------- CSV export ----------
 test('CSV appends verdict columns and carries extras', () => {
   const report = { rows: [
-    { ruleName: 'R1', source: '/a', expected: '/b', extra: { Notes: 'hi, there' }, finalUrl: '/b', verdict: 'PASS', hopCount: 2, reason: null },
+    { ruleName: 'R1', source: '/a', expected: '/b', extra: { Notes: 'hi, there' }, finalUrl: '/b', verdict: 'PASS', hopCount: 2, reason: null,
+      hops: [
+        { n: 1, url: '/a', status: 301, server: 'akamai', timeMs: 12 },
+        { n: 2, url: '/b', status: 200, server: 'origin', timeMs: 30 },
+      ] },
   ] };
   const csv = toCSV(report);
   const [header, row] = csv.split('\r\n');
-  assert.equal(header, 'Rule Name,Source URL,Expected Target,Notes,Actual Target,Verdict,Hop Count,Reason');
+  assert.equal(header, 'Rule Name,Source URL,Expected Target,Notes,Actual Target,Verdict,Hop Count,Reason,Hop Chain');
   assert.ok(row.includes('"hi, there"')); // escaped comma
+  // Full chain exported — every hop, not just first/last.
+  assert.ok(row.includes('#1 /a [301 · Akamai edge · 12ms]'));
+  assert.ok(row.includes('#2 /b [200 · AEM publish · 30ms] (final)'));
 });
 
 // ---------- summary ----------
