@@ -12,6 +12,8 @@ const SERVER_LABEL = { akamai: 'Akamai edge', dispatcher: 'AEM dispatcher', orig
 let current = null;       // the report being shown
 let filter = 'all';       // active filter chip
 let query = '';           // search text
+const PAGE = 100;         // rows rendered per "page" (large audits can be huge)
+let shown = PAGE;         // how many filtered rows are currently rendered
 
 function reasonBlock(row) {
   const v = row.verdict;
@@ -98,7 +100,9 @@ function sortFailuresFirst(rows) {
 }
 
 export function renderReport(report, mount) {
-  current = report;
+  // Reset filter/search/pagination only when a different report is loaded
+  // (re-renders for paging/filtering pass the same `current` object).
+  if (report !== current) { current = report; filter = 'all'; query = ''; shown = PAGE; }
   const s = report.summary || { checked: 0, passed: 0, failed: 0, blocked: 0, deepChecked: 0 };
   const counts = {
     all: report.rows.length,
@@ -130,11 +134,25 @@ export function renderReport(report, mount) {
       <button class="exp" id="expJson">⬇ Export JSON</button>
       <span class="hint" style="margin-left:auto;align-self:center">archived → ${esc(report.filename || '')}</span>
     </div>
-    <div id="rows"></div>`;
+    <div id="rows"></div>
+    <div id="more"></div>`;
 
   const visible = sortFailuresFirst(report.rows.filter(matchesFilter));
+  const page = visible.slice(0, shown);
   const rowsEl = mount.querySelector('#rows');
-  rowsEl.innerHTML = visible.length ? visible.map(rowEl).join('') : `<div class="empty">No rows match this filter.</div>`;
+  rowsEl.innerHTML = page.length ? page.map(rowEl).join('') : `<div class="empty">No rows match this filter.</div>`;
+
+  // "Show more" for large result sets — render in pages so thousands of rows
+  // don't all hit the DOM at once.
+  const moreEl = mount.querySelector('#more');
+  if (visible.length > shown) {
+    const remaining = visible.length - shown;
+    moreEl.innerHTML = `<div style="text-align:center;margin:8px 0 4px">
+      <button class="exp" id="showMore">Show ${Math.min(PAGE, remaining)} more · ${remaining} hidden</button></div>`;
+    moreEl.querySelector('#showMore').addEventListener('click', () => { shown += PAGE; renderReport(current, mount); });
+  } else {
+    moreEl.innerHTML = '';
+  }
 
   // wire interactions
   mount.querySelectorAll('[data-tog]').forEach((h) => h.addEventListener('click', () => {
@@ -142,10 +160,10 @@ export function renderReport(report, mount) {
     h.nextElementSibling.classList.toggle('show');
   }));
   mount.querySelectorAll('.chip').forEach((c) => c.addEventListener('click', () => {
-    filter = c.dataset.f; renderReport(current, mount);
+    filter = c.dataset.f; shown = PAGE; renderReport(current, mount);
   }));
   const search = mount.querySelector('#searchBox');
-  search.addEventListener('input', () => { query = search.value.toLowerCase(); renderReport(current, mount); search.focus(); });
+  search.addEventListener('input', () => { query = search.value.toLowerCase(); shown = PAGE; renderReport(current, mount); search.focus(); });
   mount.querySelector('#expandAll').addEventListener('click', () => {
     mount.querySelectorAll('[data-tog]').forEach((h) => { h.classList.add('open'); h.nextElementSibling.classList.add('show'); });
   });

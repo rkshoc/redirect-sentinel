@@ -313,8 +313,25 @@ async function openAudit(file) {
 function showErr(msg) { const b = $('auditErr'); b.textContent = msg; b.classList.add('show'); }
 function hideErr() { $('auditErr').classList.remove('show'); }
 
+// ---------- Theme ----------
+const THEME_KEY = 'rs-theme';
+function applyTheme(t) {
+  document.documentElement.setAttribute('data-theme', t);
+  const b = $('themeBtn');
+  if (b) { b.textContent = t === 'light' ? '☀️' : '🌙'; b.title = `Switch to ${t === 'light' ? 'dark' : 'light'} theme`; }
+}
+function toggleTheme() {
+  const next = (document.documentElement.getAttribute('data-theme') || 'dark') === 'light' ? 'dark' : 'light';
+  try { localStorage.setItem(THEME_KEY, next); } catch { /* ignore */ }
+  applyTheme(next);
+}
+
 // ---------- Boot ----------
 function boot() {
+  // Theme (the inline head script already set data-theme; sync the button icon)
+  applyTheme(document.documentElement.getAttribute('data-theme') || 'dark');
+  $('themeBtn').addEventListener('click', toggleTheme);
+
   // Tabs
   document.querySelectorAll('.tabs button').forEach((b) => b.addEventListener('click', () => tab(Number(b.dataset.tab))));
 

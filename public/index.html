@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Redirect Sentinel</title>
+<!-- Apply saved theme before paint to avoid a flash. -->
+<script>try{document.documentElement.setAttribute('data-theme',localStorage.getItem('rs-theme')||'dark')}catch(e){}</script>
 <link rel="stylesheet" href="/css/styles.css">
 <!-- Netlify Identity: roles -> tier limits (CLAUDE.md §4). -->
 <script src="https://identity.netlify.com/v1/netlify-identity-widget.js"></script>
@@ -16,6 +18,7 @@
   <div class="top">
     <div class="logo">Redirect<span class="dot">·</span>Sentinel</div>
     <span class="badge">AEM · AKAMAI CONTRACT TEST</span>
+    <button class="themebtn" id="themeBtn" title="Toggle light/dark theme" aria-label="Toggle theme">🌙</button>
     <div class="who" id="who">
       <span class="lim" id="whoLim">not logged in · ≤10 URLs</span>
       <button id="authBtn">Log in</button>
