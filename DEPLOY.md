@@ -104,23 +104,24 @@ deep-check job uses this PAT.)
 ## How the pieces talk
 
 ```
-Browser ─POST /api/audit─▶ audit (sync gatekeeper)
-   │                          │  auth + tier limit (Identity clientContext)
-   │                          │  returns the report path ──────────────┐
-   │                          └─▶ triggers audit-background (worker) ◀── internal token
-   │                                  │  trace + batch + verdict
-   │                                  ├─▶ commit JSON+CSV ─▶ reports repo (immutable)
-   │                                  └─▶ workflow_dispatch ─▶ deep-check.yml (if blocked)
-   │                                                              │ Playwright (fresh IP)
-   │                                                              └─▶ <base>.deepcheck.json
+Browser ─GET /api/whoami─▶ whoami (sync) ─ Identity clientContext ─▶ signed identity token
+   │                                                                         │
+   ├─POST /api/audit (carries the signed token) ─▶ audit-background (worker)─┘
+   │                                                  │  verify token + tier limit
+   │                                                  │  trace + batch + verdict
+   │                                                  ├─▶ commit JSON+CSV ─▶ reports repo
+   │                                                  └─▶ workflow_dispatch ─▶ deep-check.yml
+   │                                                                              │ Playwright
+   │                                                                              └─▶ <base>.deepcheck.json
    └──poll /api/report?path=…──▶ get-report ──reads base + merges companion──▶ render
 ```
 
-> A sync gatekeeper is required because Netlify does **not** populate Identity's
-> `clientContext.user` for background functions — so auth/limits are enforced in
-> the sync function, which then starts the background worker. The worker is
-> protected by an internal shared secret (`INTERNAL_TOKEN`, optional — it
-> falls back to `GITHUB_TOKEN`, so no extra setup is needed).
+> Netlify does **not** populate Identity's `clientContext.user` for background
+> functions, and only executes them on a direct browser trigger. So the browser
+> first calls the sync `/api/whoami` (where Identity works) to get a short-lived
+> **server-signed identity token**, then calls the worker directly with it. The
+> worker verifies the token (HMAC over `INTERNAL_TOKEN`, which falls back to
+> `GITHUB_TOKEN` — no extra setup needed), keeping tier limits un-forgeable.
 
 ## Notes, limits & cost
 

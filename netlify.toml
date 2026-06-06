@@ -19,7 +19,12 @@
 
 [[redirects]]
   from = "/api/audit"
-  to = "/.netlify/functions/audit"
+  to = "/.netlify/functions/audit-background"
+  status = 200
+
+[[redirects]]
+  from = "/api/whoami"
+  to = "/.netlify/functions/whoami"
   status = 200
 
 [[redirects]]

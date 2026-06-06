@@ -13,7 +13,7 @@
 import { trace, BROWSER_HEADERS } from './lib/engine.mjs';
 import { runBatched, BATCH_DEFAULTS, chunk } from './lib/batch.mjs';
 import { classify, VERDICT } from './lib/verdict.mjs';
-import { resolveIdentity, checkLimit, shortId } from './lib/auth.mjs';
+import { resolveIdentity, verifyIdentity, checkLimit, shortId } from './lib/auth.mjs';
 import { archivePaths, summarise, toCSV } from './lib/report.mjs';
 import { putFile, dispatchDeepCheck, ghConfig } from './lib/github.mjs';
 
@@ -67,17 +67,12 @@ function batchOpts() {
 
 const json = (status, body) => ({ statusCode: status, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 
-// Background worker. Netlify does NOT populate clientContext.user for background
-// functions, so identity is resolved by the sync `audit` gatekeeper and passed
-// in (verified) via `_identity`. The gatekeeper authenticates with an internal
-// shared secret so this public endpoint can't be called directly to bypass the
-// tier limits (CLAUDE.md §4).
+// Background worker. The browser calls this directly (Netlify only executes
+// background functions on a direct external HTTP trigger, and does not populate
+// clientContext.user for them). A logged-in browser includes a server-signed
+// identity token (`_auth`) issued by /api/whoami, which we verify here; limits
+// stay enforced server-side and can't be forged (CLAUDE.md §4).
 export const handler = async (event, context) => {
-  const headers = event.headers || {};
-  const token = headers['x-internal-token'] || headers['X-Internal-Token'] || '';
-  const expected = process.env.INTERNAL_TOKEN || process.env.GITHUB_TOKEN || '';
-  if (!expected || token !== expected) return json(403, { error: 'forbidden' });
-
   let payload;
   try {
     payload = JSON.parse(event.body || '{}');
@@ -85,23 +80,21 @@ export const handler = async (event, context) => {
     return json(400, { error: 'Bad request' });
   }
 
-  // Prefer the identity verified by the gatekeeper; fall back to clientContext.
-  const identity = payload._identity || resolveIdentity(context.clientContext);
+  const identity = verifyIdentity(payload._auth) || resolveIdentity(context.clientContext);
   const items = buildItems(payload);
 
-  // Defensive re-check (the gatekeeper already enforced this).
+  // SERVER-SIDE limit enforcement (CLAUDE.md §4) — never trust the browser.
   const limitErr = checkLimit(items.length, identity);
   if (limitErr) return json(limitErr.status, { error: limitErr.message });
 
-  // The gatekeeper computed the authoritative archive path from the verified
-  // identity and returned it to the browser, so we write to exactly that path.
-  const now = payload._now ? new Date(payload._now) : new Date();
+  // Client supplies UTC timestamp + id so it can predict the archive path to
+  // poll. The user label comes from the verified identity, matching the path
+  // the browser computed from /api/whoami's `user`.
+  const ts = Date.parse(payload.timestamp || '');
+  const now = Number.isFinite(ts) ? new Date(ts) : new Date();
+  const id = (payload.id && /^[a-z0-9]{2,12}$/i.test(payload.id)) ? payload.id : shortId();
   const userLabel = identity.user || 'anon';
-  const paths = payload._paths || archivePaths(
-    now, userLabel,
-    (payload.id && /^[a-z0-9]{2,12}$/i.test(payload.id)) ? payload.id : shortId(),
-  );
-  const id = payload.id || paths.base.split('_').pop();
+  const paths = archivePaths(now, userLabel, id);
 
   // Run the audit. Background functions can take their time, so we await fully.
   // (Netlify returns 202 to the client the moment this handler was invoked.)

@@ -1,9 +1,17 @@
 // Auth & tiers — see CLAUDE.md §4.
 //
-// Limits are enforced SERVER-SIDE here. Even if the frontend is edited, the
-// Function rejects over-limit requests. Identity comes from Netlify Identity:
-// the gateway verifies the JWT and populates context.clientContext.user. We do
-// NOT use env vars as a user database and never ship secrets to the browser.
+// Limits are enforced SERVER-SIDE. Even if the frontend is edited, the Function
+// rejects over-limit requests. Identity comes from Netlify Identity: a sync
+// function's context.clientContext.user is populated from the verified JWT.
+//
+// Background functions do NOT receive clientContext, and Netlify only executes
+// them on a direct (external) HTTP trigger — so the browser calls the worker
+// directly and carries a short-lived, server-SIGNED identity token issued by
+// the sync /api/whoami endpoint. signIdentity/verifyIdentity (HMAC over a server
+// secret the browser never sees) let the worker trust that identity without
+// clientContext, while keeping limits un-forgeable.
+
+import crypto from 'node:crypto';
 
 export const ROLE_LIMITS = {
   owner: Infinity,
@@ -72,4 +80,55 @@ export function shortId(len = 4) {
   let s = '';
   for (let i = 0; i < len; i++) s += alphabet[Math.floor(Math.random() * alphabet.length)];
   return s;
+}
+
+// Shared secret for signing identity tokens. Never sent to the browser. Falls
+// back to GITHUB_TOKEN so no extra env var is required.
+function signingSecret() {
+  return process.env.INTERNAL_TOKEN || process.env.GITHUB_TOKEN || '';
+}
+
+/**
+ * Issue a short-lived signed token attesting a verified identity. Called by the
+ * sync /api/whoami (which has clientContext). The worker verifies it instead of
+ * trusting raw browser claims.
+ */
+export function signIdentity(identity, ttlMs = 10 * 60 * 1000) {
+  const secret = signingSecret();
+  if (!secret || !identity || !identity.loggedIn) return null;
+  const claims = {
+    user: identity.user,
+    roles: identity.roles || [],
+    role: identity.role || null,
+    limit: identity.limit === Infinity ? 'inf' : identity.limit,
+    exp: Date.now() + ttlMs,
+  };
+  const body = Buffer.from(JSON.stringify(claims)).toString('base64url');
+  const sig = crypto.createHmac('sha256', secret).update(body).digest('base64url');
+  return `${body}.${sig}`;
+}
+
+/**
+ * Verify a token from signIdentity. Returns an identity object (same shape as
+ * resolveIdentity) or null if missing/invalid/expired.
+ */
+export function verifyIdentity(token) {
+  const secret = signingSecret();
+  if (!secret || !token || typeof token !== 'string') return null;
+  const [body, sig] = token.split('.');
+  if (!body || !sig) return null;
+  const expected = crypto.createHmac('sha256', secret).update(body).digest('base64url');
+  const a = Buffer.from(sig);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
+  let claims;
+  try { claims = JSON.parse(Buffer.from(body, 'base64url').toString('utf8')); } catch { return null; }
+  if (!claims.exp || Date.now() > claims.exp) return null;
+  return {
+    loggedIn: true,
+    user: claims.user,
+    roles: claims.roles || [],
+    role: claims.role || null,
+    limit: claims.limit === 'inf' ? Infinity : claims.limit,
+  };
 }

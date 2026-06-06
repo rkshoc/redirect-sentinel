@@ -138,12 +138,11 @@ function shortId() {
   return Array.from({ length: 4 }, () => a[Math.floor(Math.random() * a.length)]).join('');
 }
 
-function buildPayload() {
+function buildPayload(userLabel, authToken) {
   const baseUrl = $('baseUrl').value.trim();
   const id = shortId();
   const now = new Date();
   const timestamp = now.toISOString();
-  const userLabel = state.user ? state.user.email : 'anon';
   const path = predictPath(now, userLabel, id);
   let payload;
   if (state.sheet && state.sheet.rows.length) {
@@ -155,42 +154,61 @@ function buildPayload() {
     if (!urls.length) { showErr('Paste at least one URL, or upload a sheet.'); return null; }
     payload = { mode: 'paste', urls, baseUrl, id, timestamp };
   }
+  if (authToken) payload._auth = authToken;
   return { payload, path };
+}
+
+// Fetch a server-signed identity token (and the authoritative user label used
+// for the archive path) so the background worker can trust who we are.
+async function fetchIdentityToken() {
+  if (!state.user) return { token: null, userLabel: 'anon' };
+  try {
+    const res = await fetch('/api/whoami', { headers: await authHeaders() });
+    if (res.ok) {
+      const w = await res.json();
+      return { token: w.token || null, userLabel: w.user || state.user.email };
+    }
+  } catch { /* fall through */ }
+  return { token: null, userLabel: state.user.email };
 }
 
 async function runAudit() {
   hideErr();
-  const built = buildPayload();
-  if (!built) return;
-  const { payload, path } = built;
-  const n = payload.mode === 'paste' ? payload.urls.length : payload.rows.length;
-
-  if (n > state.limit) { showErr(`${n} URLs exceeds your limit of ${state.limit}.`); return; }
-  if (!state.user && n > ANON_LIMIT) { showErr(`Log in to audit more than ${ANON_LIMIT} URLs.`); return; }
+  const count = currentCount();
+  if (!count) { showErr('Upload a sheet or paste URLs to begin.'); return; }
+  if (count > state.limit) { showErr(`${count} URLs exceeds your limit of ${state.limit === Infinity ? '∞' : state.limit}.`); return; }
+  if (!state.user && count > ANON_LIMIT) { showErr(`Log in to audit more than ${ANON_LIMIT} URLs.`); return; }
 
   $('runBtn').disabled = true;
-  startProgress(n);
+  startProgress(count);
 
-  // The sync gatekeeper authenticates, enforces the limit, starts the worker,
-  // and returns the authoritative report path to poll.
-  let res, data;
+  const { token, userLabel } = await fetchIdentityToken();
+  const built = buildPayload(userLabel, token);
+  if (!built) { stopProgress(); $('runBtn').disabled = false; return; }
+  const { payload, path } = built;
+
+  // The browser calls the background worker directly (Netlify executes
+  // background functions on external triggers); it returns 202 with no body, so
+  // we poll the predicted report path for the result.
+  let res;
   try {
     res = await fetch('/api/audit', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
       body: JSON.stringify(payload),
     });
-    data = await res.json().catch(() => ({}));
   } catch (e) {
     stopProgress(); $('runBtn').disabled = false; showErr(`Network error: ${e.message}`); return;
   }
 
-  if (!res.ok) {
+  // 202 = accepted (background started). A 4xx is a hard, synchronous rejection.
+  if (res.status >= 400 && res.status !== 404) {
     stopProgress(); $('runBtn').disabled = false;
-    showErr(data.error || `Request rejected (HTTP ${res.status}).`); return;
+    const msg = (await res.json().catch(() => ({}))).error || `Request rejected (HTTP ${res.status}).`;
+    showErr(msg); return;
   }
 
-  pollReport(data.path || path);
+  pollReport(path);
 }
 
 // ---------- Progress (time-estimate; the background fn doesn't stream) ----------

@@ -5,7 +5,9 @@ import { classify, VERDICT, REASON } from '../netlify/functions/lib/verdict.mjs'
 import { tagServer, SERVER } from '../netlify/functions/lib/servertag.mjs';
 import { archivePaths, toCSV, summarise } from '../netlify/functions/lib/report.mjs';
 import { chunk, runBatched } from '../netlify/functions/lib/batch.mjs';
-import { resolveIdentity, checkLimit, ROLE_LIMITS, ANON_LIMIT } from '../netlify/functions/lib/auth.mjs';
+import { resolveIdentity, checkLimit, ROLE_LIMITS, ANON_LIMIT, signIdentity, verifyIdentity } from '../netlify/functions/lib/auth.mjs';
+
+process.env.INTERNAL_TOKEN = 'test-signing-secret';
 
 // ---------- verdict ----------
 test('PASS on exact match', () => {
@@ -149,4 +151,39 @@ test('owner is unlimited', () => {
 test('logged-in no role defaults to basic', () => {
   const id = resolveIdentity({ user: { email: 'a@b.c', app_metadata: {} } });
   assert.equal(id.limit, ROLE_LIMITS.basic);
+});
+
+// ---------- signed identity ----------
+test('signIdentity / verifyIdentity round-trips a logged-in identity', () => {
+  const id = resolveIdentity({ user: { email: 'me@x.com', app_metadata: { roles: ['admin'] } } });
+  const token = signIdentity(id);
+  assert.ok(token && token.includes('.'));
+  const back = verifyIdentity(token);
+  assert.equal(back.user, 'me@x.com');
+  assert.equal(back.role, 'admin');
+  assert.equal(back.limit, ROLE_LIMITS.admin);
+  assert.equal(back.loggedIn, true);
+});
+
+test('owner unlimited survives sign/verify (Infinity <-> inf)', () => {
+  const id = resolveIdentity({ user: { email: 'o@x.com', app_metadata: { roles: ['owner'] } } });
+  assert.equal(verifyIdentity(signIdentity(id)).limit, Infinity);
+});
+
+test('anonymous identity is not signable', () => {
+  assert.equal(signIdentity(resolveIdentity(undefined)), null);
+});
+
+test('tampered or garbage token fails verification', () => {
+  const id = resolveIdentity({ user: { email: 'me@x.com', app_metadata: { roles: ['owner'] } } });
+  const token = signIdentity(id);
+  assert.equal(verifyIdentity(token.slice(0, -3) + 'xxx'), null); // bad signature
+  assert.equal(verifyIdentity('not-a-token'), null);
+  assert.equal(verifyIdentity(null), null);
+});
+
+test('expired token fails verification', () => {
+  const id = resolveIdentity({ user: { email: 'me@x.com', app_metadata: { roles: ['admin'] } } });
+  const token = signIdentity(id, -1); // already expired
+  assert.equal(verifyIdentity(token), null);
 });
