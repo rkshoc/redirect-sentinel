@@ -31,8 +31,8 @@ export function detectMapping(columns) {
     return fallback < columns.length ? fallback : null;
   };
   const ruleName = find([/rule/, /\bname\b/, /\bid\b/], 0);
-  const source = find([/source/, /\bfrom\b/, /\bold\b/, /^url$|request|origin url/], 1);
-  const expected = find([/expected/, /target/, /\bto\b/, /\bnew\b/, /destination|redirect to/], 2);
+  const source = find([/source/, /match.?url/, /\bmatch\b/, /\bfrom\b/, /\bold\b/, /request|origin.?url/, /^url$/], 1);
+  const expected = find([/expected/, /redirect.?url/, /target/, /destination/, /\bto\b/, /\bnew\b/, /redirect to/], 2);
   return { ruleName, source, expected };
 }
 

@@ -45,6 +45,7 @@
         <div class="map">
           <h4 id="mapTitle">Detected columns — confirm mapping</h4>
           <div class="maprow" id="mapRow"></div>
+          <div class="mapcount" id="mapCount"></div>
         </div>
       </div>
 
@@ -62,8 +63,15 @@
       </div>
 
       <div class="prog" id="prog">
+        <div class="pphase" id="pmsg">Starting…</div>
         <div class="pbar"><div class="pfill" id="pfill"></div></div>
-        <div class="pmeta"><span id="pmsg">Starting…</span><span id="pcount"></span></div>
+        <div class="pstats">
+          <span class="pstat"><b id="pTotal">0</b> URLs</span>
+          <span class="pstat"><b id="pBatches">0</b> batches · ~30/batch</span>
+          <span class="pstat">elapsed <b id="pElapsed">0:00</b></span>
+          <span class="pstat">~<b id="pEta">—</b> left</span>
+          <span class="pstat" id="pcount"></span>
+        </div>
       </div>
     </div>
     <div class="legend">

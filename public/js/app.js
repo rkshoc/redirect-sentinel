@@ -101,16 +101,39 @@ function renderMapping() {
 }
 
 function updatePreview() {
-  const first = state.sheet.rows[0] || [];
+  const first = auditableRows()[0] || state.sheet.rows[0] || [];
   for (const key of ['ruleName', 'source', 'expected']) {
     const i = state.mapping[key];
     $(`prev_${key}`).textContent = i == null ? '—' : String(first[i] ?? '').slice(0, 40);
   }
+  // Show how many rows actually have the data we need vs the whole table.
+  const el = $('mapCount');
+  if (el) {
+    const total = state.sheet.rows.length;
+    const usable = auditableRows().length;
+    const needsExp = state.mapping.expected != null;
+    el.innerHTML = `<b>${usable}</b> of ${total} rows have a Source${needsExp ? ' + Expected' : ''} URL and will be audited` +
+      (usable < total ? ` · <span class="muted">${total - usable} blank/incomplete rows skipped</span>` : '');
+  }
+}
+
+// Rows worth auditing: those whose mapped Source (and Expected, when mapped) are
+// non-empty. A big sheet often has thousands of blank rows we must ignore so we
+// don't blow the tier limit or waste requests.
+function auditableRows() {
+  if (!state.sheet) return [];
+  const m = state.mapping;
+  if (m == null || m.source == null) return [];
+  return state.sheet.rows.filter((r) => {
+    if (String(r[m.source] ?? '').trim() === '') return false;
+    if (m.expected != null && String(r[m.expected] ?? '').trim() === '') return false;
+    return true;
+  });
 }
 
 // ---------- Run hint / limit messaging ----------
 function currentCount() {
-  if (state.sheet) return state.sheet.rows.length;
+  if (state.sheet) return auditableRows().length;
   return parsePaste($('pasteBox').value).length;
 }
 
@@ -148,7 +171,9 @@ function buildPayload(userLabel, authToken) {
   if (state.sheet && state.sheet.rows.length) {
     const m = state.mapping;
     if (m.source == null) { showErr('Map a Source URL column before running.'); return null; }
-    payload = { mode: 'sheet', columns: state.sheet.columns, mapping: m, rows: state.sheet.rows, baseUrl, id, timestamp };
+    const rows = auditableRows();
+    if (!rows.length) { showErr('No rows have both a Source and Expected URL. Check your column mapping.'); return null; }
+    payload = { mode: 'sheet', columns: state.sheet.columns, mapping: m, rows, baseUrl, id, timestamp };
   } else {
     const urls = parsePaste($('pasteBox').value);
     if (!urls.length) { showErr('Paste at least one URL, or upload a sheet.'); return null; }
@@ -211,22 +236,32 @@ async function runAudit() {
   pollReport(path);
 }
 
-// ---------- Progress (time-estimate; the background fn doesn't stream) ----------
+// ---------- Progress ----------
+// The background worker can't stream, so elapsed time is real while the bar/ETA
+// are an estimate (batch count + a cold-start allowance). Once polling sees the
+// report we switch to real, known facts (e.g. live deep-check count).
 let progTimer = null;
+let progEstMs = 1;
+const fmtTime = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+
 function startProgress(n) {
   const batches = Math.ceil(n / 30);
-  const estMs = batches * 4000 + n * 600; // cooldowns + rough per-URL time
+  progEstMs = 6000 /* cold start */ + batches * 4000 /* cooldowns */ + n * 700 /* per-URL */;
   const start = Date.now();
   $('prog').classList.add('show');
-  $('pmsg').textContent = `Auditing ${n} URL${n === 1 ? '' : 's'} across ${batches} batch${batches === 1 ? '' : 'es'}…`;
+  $('pmsg').innerHTML = `<span class="spin"></span> Tracing redirects via HTTP…`;
+  $('pTotal').textContent = n;
+  $('pBatches').textContent = batches;
   $('pcount').textContent = '';
   progTimer = setInterval(() => {
-    const pct = Math.min(90, ((Date.now() - start) / estMs) * 90);
-    $('pfill').style.width = `${pct}%`;
+    const elapsed = Date.now() - start;
+    $('pElapsed').textContent = fmtTime(elapsed);
+    $('pEta').textContent = elapsed >= progEstMs ? 'wrapping up' : fmtTime(progEstMs - elapsed);
+    $('pfill').style.width = `${Math.min(95, (elapsed / progEstMs) * 95)}%`;
   }, 300);
 }
 function stopProgress() { clearInterval(progTimer); $('prog').classList.remove('show'); $('pfill').style.width = '0%'; }
-function finishProgress() { clearInterval(progTimer); $('pfill').style.width = '100%'; setTimeout(() => $('prog').classList.remove('show'), 600); }
+function finishProgress() { clearInterval(progTimer); $('pfill').style.width = '100%'; setTimeout(() => $('prog').classList.remove('show'), 800); }
 
 // ---------- Poll for the report ----------
 async function pollReport(path) {
@@ -237,7 +272,7 @@ async function pollReport(path) {
     let data;
     try {
       const res = await fetch(`/api/report?path=${encodeURIComponent(path)}`, { headers: await authHeaders() });
-      if (res.status === 404) { $('pmsg').textContent = 'Auditing… (waiting for results)'; continue; }
+      if (res.status === 404) { continue; } // still running; keep the live phase/elapsed
       data = await res.json();
       if (res.status >= 500) { stopProgress(); $('runBtn').disabled = false; showErr(data.error || `Server error (HTTP ${res.status}).`); return; }
     } catch { continue; }

@@ -42,7 +42,13 @@ function buildItems(payload) {
   const srcIdx = map.source;
   const expIdx = map.expected;
   const extraIdx = cols.map((_, i) => i).filter((i) => i !== ruleIdx && i !== srcIdx && i !== expIdx);
-  return (payload.rows || []).map((row) => {
+  return (payload.rows || []).filter((row) => {
+    // Ignore blank/incomplete rows (large sheets often have thousands) so they
+    // don't count against the tier limit or generate wasted requests.
+    if (String(row[srcIdx] ?? '').trim() === '') return false;
+    if (expIdx != null && String(row[expIdx] ?? '').trim() === '') return false;
+    return true;
+  }).map((row) => {
     const extra = {};
     for (const i of extraIdx) extra[cols[i] || `col${i}`] = row[i] ?? '';
     const rawSource = row[srcIdx] ?? '';
