@@ -1,0 +1,6 @@
+Rule Name,Source URL,Expected Target,Status Notes
+REDIR_BLOG_RENAME_19,https://www.example.com/news/old,https://www.example.com/insights,migrated 2026-01
+REDIR_PROD_MIGRATE_07,https://www.example.com/old-products,https://www.example.com/us/en/products,
+REDIR_CART_LEGACY_02,https://shop.example.com/cart-old,https://shop.example.com/cart,trailing-slash watch
+REDIR_SUPPORT_04,https://www.example.com/help-old,https://www.example.com/support,
+REDIR_CAMPAIGN_11,https://www.example.com/legacy/promo-2023,https://www.example.com/campaigns/promo,seasonal
