@@ -32,6 +32,14 @@
   to = "/.netlify/functions/check"
   status = 200
 
+# Additive path-based entry point: /api/check/<nonce>/<encodedUrls>. The unique
+# <nonce> in the PATH defeats upstream caches that key on path and ignore the
+# query string. Reuses the same function/logic; response is sent uncached.
+[[redirects]]
+  from = "/api/check/*"
+  to = "/.netlify/functions/check?splat=:splat"
+  status = 200
+
 [[redirects]]
   from = "/mcp"
   to = "/.netlify/functions/mcp"
