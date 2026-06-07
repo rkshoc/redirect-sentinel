@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowRight } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useAuditRun } from '../hooks/useAuditRun.js';
+import { MAX_AUDIT_URLS } from '../lib/api.js';
 import { parseFile, detectMapping, parsePaste, auditableRows, combineSheets } from '../lib/parse.js';
 import { Banner } from '../components/Banner.jsx';
 import { FileDrop } from '../components/newaudit/FileDrop.jsx';
@@ -12,6 +13,9 @@ import { ShimmerButton } from '../components/ui/ShimmerButton.jsx';
 
 function runHint({ count, limit, user }) {
   if (!count) return { over: false, text: 'Upload a sheet or paste URLs to begin.' };
+  if (count > MAX_AUDIT_URLS) {
+    return { over: true, text: `${count} URLs — runs are capped at ${MAX_AUDIT_URLS} (payload + time limits). Split into separate files.` };
+  }
   if (count > limit) {
     return { over: true, text: `${count} URLs exceeds your ${limit === Infinity ? '∞' : limit} limit${!user ? ' — log in for more' : ''}.` };
   }
