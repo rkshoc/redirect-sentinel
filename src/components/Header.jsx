@@ -1,3 +1,4 @@
+import { AnimatePresence, motion } from 'framer-motion';
 import { Moon, Sun, LogIn, LogOut } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useTheme } from '../context/ThemeContext.jsx';
@@ -51,9 +52,20 @@ export function Header() {
           onClick={toggle}
           title={`Switch to ${theme === 'light' ? 'dark' : 'light'} theme`}
           aria-label="Toggle theme"
-          className="grid h-8 w-8 place-items-center rounded-lg border border-line text-muted transition hover:border-aem hover:text-ink"
+          className="grid h-8 w-8 place-items-center overflow-hidden rounded-lg border border-line text-muted transition hover:border-aem hover:text-ink"
         >
-          {theme === 'light' ? <Sun size={15} /> : <Moon size={15} />}
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.span
+              key={theme}
+              initial={{ rotate: -90, opacity: 0, scale: 0.4 }}
+              animate={{ rotate: 0, opacity: 1, scale: 1 }}
+              exit={{ rotate: 90, opacity: 0, scale: 0.4 }}
+              transition={{ duration: 0.25, ease: 'easeOut' }}
+              className="grid place-items-center"
+            >
+              {theme === 'light' ? <Sun size={15} /> : <Moon size={15} />}
+            </motion.span>
+          </AnimatePresence>
         </button>
       </div>
     </header>

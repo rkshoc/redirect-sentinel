@@ -64,9 +64,15 @@ export function useAuditRun({ onReport }) {
 
   const pollReport = useCallback(async (path) => {
     const deadline = Date.now() + 14 * 60 * 1000; // background fn max ~15 min
-    let interval = 3000;
+    // While the background job runs, /api/report returns 404 by design ("not
+    // written yet"). Back the poll interval off (2.5s → 6s) so a long job makes
+    // far fewer requests instead of hammering every 3s.
+    let polls = 0;
+    let partial = false;
     while (Date.now() < deadline && !cancelled.current) {
+      const interval = partial ? 12000 : Math.min(6000, 2500 + polls * 750);
       await new Promise((r) => setTimeout(r, interval));
+      polls++;
       if (cancelled.current) return;
       let data;
       try {
@@ -80,7 +86,7 @@ export function useAuditRun({ onReport }) {
       if (data && data.rows) {
         if (data.status === 'partial') {
           onReport(data); // live-refresh while deep-checks run
-          interval = 12000;
+          partial = true;
           continue;
         }
         finishProgress();
