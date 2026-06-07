@@ -108,7 +108,7 @@ export const handler = async (event, context) => {
     items,
     async (item) => {
       if (!item.source || !/^https?:/i.test(item.source)) {
-        return { ...item, trace: { source: item.source, finalUrl: null, finalStatus: null, hopCount: 0, blocked: false, loop: false, error: 'invalid or relative URL (set a base URL)', hops: [] } };
+        return { ...item, trace: { source: item.source, finalUrl: null, finalStatus: null, hopCount: 0, blocked: false, loop: false, error: 'invalid URL — provide a full https:// URL', hops: [] } };
       }
       const t = await trace(item.source, { perHopTimeoutMs: Number(process.env.HOP_TIMEOUT_MS) || 12000 });
       return { ...item, trace: t };

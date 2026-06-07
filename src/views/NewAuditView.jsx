@@ -30,7 +30,6 @@ export function NewAuditView({ onReport }) {
   const [files, setFiles] = useState([]);            // [{ name, sheet }]
   const [mapping, setMapping] = useState(null);      // shared mapping → indices into files[0].columns
   const [pasteText, setPasteText] = useState('');
-  const [baseUrl, setBaseUrl] = useState('');
   const [parseErr, setParseErr] = useState('');
   const { run, running, progress, error, clearError } = useAuditRun({ onReport });
 
@@ -103,21 +102,9 @@ export function NewAuditView({ onReport }) {
           className="min-h-[84px] w-full resize-y rounded-xl border border-line bg-bg p-3 font-mono text-[13px] leading-relaxed text-ink outline-none focus:border-aem disabled:opacity-50"
         />
 
-        <div className="mt-4">
-          <label className="mb-2 block font-mono text-[11px] uppercase tracking-wider text-muted">
-            Base URL (optional) — resolves relative paths like <code className="text-aem">/old-products</code>
-          </label>
-          <input
-            value={baseUrl}
-            onChange={(e) => setBaseUrl(e.target.value)}
-            placeholder="https://www.example.com"
-            className="w-full rounded-xl border border-line bg-bg px-3 py-2.5 font-mono text-[13px] text-ink outline-none focus:border-aem"
-          />
-        </div>
-
         <div className="mt-5 flex flex-wrap items-center gap-4">
           <ShimmerButton
-            onClick={() => run({ sheet: combined?.sheet, mapping: combined?.mapping, pasteText, baseUrl, user, limit })}
+            onClick={() => run({ sheet: combined?.sheet, mapping: combined?.mapping, pasteText, user, limit })}
             disabled={running || hint.over || !count}
           >
             Run audit <ArrowRight size={15} />
