@@ -1,0 +1,73 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Theme tokens as RGB channel triplets (consumed by tailwind.config.js via
+   rgb(var(--x) / <alpha-value>)). Verdict colors preserved: pass=green,
+   fail=red, blocked=purple, info=blue. */
+:root,
+:root[data-theme='dark'] {
+  --bg: 6 9 20;
+  --panel: 15 20 35;
+  --panel2: 23 31 50;
+  --line: 35 45 68;
+  --line2: 51 65 92;
+  --ink: 226 232 240;
+  --muted: 148 163 184;
+  --faint: 100 116 139;
+  --ak: 255 122 69;
+  --aem: 96 165 250;
+  --origin: 167 139 250;
+  --unknown: 107 119 133;
+  --pass: 45 200 110;
+  --fail: 248 81 73;
+  --warn: 234 179 8;
+  --blocked: 168 85 247;
+  --info: 59 158 255;
+}
+:root[data-theme='light'] {
+  --bg: 238 241 245;
+  --panel: 255 255 255;
+  --panel2: 243 246 249;
+  --line: 221 227 234;
+  --line2: 203 211 220;
+  --ink: 27 36 48;
+  --muted: 91 104 118;
+  --faint: 138 151 166;
+  --ak: 214 84 31;
+  --aem: 31 111 208;
+  --origin: 109 79 208;
+  --unknown: 107 119 133;
+  --pass: 26 127 55;
+  --fail: 207 34 46;
+  --warn: 154 103 0;
+  --blocked: 130 80 223;
+  --info: 9 105 218;
+}
+
+@layer base {
+  * { @apply border-line; }
+  body {
+    @apply bg-bg text-ink font-sans antialiased;
+    min-height: 100vh;
+  }
+  /* Thin, themed scrollbars for the data grids. */
+  ::-webkit-scrollbar { height: 10px; width: 10px; }
+  ::-webkit-scrollbar-thumb { background: rgb(var(--line2)); border-radius: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+}
+
+@layer components {
+  .gradient-brand {
+    @apply bg-clip-text text-transparent;
+    background-image: linear-gradient(90deg, rgb(var(--ak)), rgb(var(--aem)), rgb(var(--origin)));
+  }
+  .card { @apply bg-panel/80 border border-line rounded-2xl backdrop-blur-sm; }
+}
+
+/* Border-beam path for the progress bar / cards (Magic UI style). */
+.beam {
+  offset-path: rect(0 auto auto 0 round 12px);
+  animation: beam 4s linear infinite;
+}

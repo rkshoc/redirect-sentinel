@@ -96,14 +96,38 @@ test('user label is sanitised in filename', () => {
 });
 
 // ---------- CSV export ----------
-test('CSV appends verdict columns and carries extras', () => {
+test('CSV appends verdict columns, carries extras, one column per hop', () => {
   const report = { rows: [
-    { ruleName: 'R1', source: '/a', expected: '/b', extra: { Notes: 'hi, there' }, finalUrl: '/b', verdict: 'PASS', hopCount: 2, reason: null },
+    { ruleName: 'R1', source: '/a', expected: '/b', extra: { Notes: 'hi, there' }, finalUrl: '/b', verdict: 'PASS', hopCount: 2, reason: null,
+      hops: [
+        { n: 1, url: '/a', status: 301, server: 'akamai', timeMs: 12 },
+        { n: 2, url: '/b', status: 200, server: 'origin', timeMs: 30 },
+      ] },
   ] };
   const csv = toCSV(report);
   const [header, row] = csv.split('\r\n');
-  assert.equal(header, 'Rule Name,Source URL,Expected Target,Notes,Actual Target,Verdict,Hop Count,Reason');
+  // Per-hop columns up to the longest chain (here 2 hops).
+  assert.equal(header, 'Rule Name,Source URL,Expected Target,Notes,Actual Target,Verdict,Hop Count,Reason,Hop 1 URL,Hop 1 Status,Hop 1 Server,Hop 2 URL,Hop 2 Status,Hop 2 Server');
   assert.ok(row.includes('"hi, there"')); // escaped comma
+  // Every hop broken into its own URL/Status/Server cells.
+  assert.equal(row, 'R1,/a,/b,"hi, there",/b,PASS,2,,/a,301,Akamai edge,/b,200,AEM publish');
+});
+
+test('CSV pads shorter chains and widens to the longest', () => {
+  const report = { rows: [
+    { ruleName: 'short', source: '/s', expected: '/s', finalUrl: '/s', verdict: 'FAIL', hopCount: 1, reason: 'no redirect',
+      hops: [{ n: 1, url: '/s', status: 200, server: 'unknown', timeMs: 5 }] },
+    { ruleName: 'long', source: '/a', expected: '/c', finalUrl: '/c', verdict: 'PASS', hopCount: 3, reason: null,
+      hops: [
+        { n: 1, url: '/a', status: 301, server: 'akamai', timeMs: 1 },
+        { n: 2, url: '/b', status: 302, server: 'dispatcher', timeMs: 2 },
+        { n: 3, url: '/c', status: 200, server: 'origin', timeMs: 3 },
+      ] },
+  ] };
+  const [header, r1] = toCSV(report).split('\r\n');
+  assert.ok(header.endsWith('Hop 1 URL,Hop 1 Status,Hop 1 Server,Hop 2 URL,Hop 2 Status,Hop 2 Server,Hop 3 URL,Hop 3 Status,Hop 3 Server'));
+  // The 1-hop row has blank cells for hops 2 and 3 (6 trailing empty fields).
+  assert.equal(r1, 'short,/s,/s,/s,FAIL,1,no redirect,/s,200,origin · masked,,,,,,');
 });
 
 // ---------- summary ----------
