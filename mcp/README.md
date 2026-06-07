@@ -3,8 +3,12 @@
 A tiny [Model Context Protocol](https://modelcontextprotocol.io) server that
 exposes your deployed Redirect Sentinel's `POST /api/check` as a **tool**, so
 **Claude Desktop** and **Claude Code** can audit HTTP redirects directly in a
-conversation. (Consumer Claude.ai *chat* can't run MCP servers — this is for the
-desktop/CLI clients and the Claude Agent SDK.)
+conversation.
+
+> **This is the *local* (stdio) server** — for Claude Desktop / Claude Code / the
+> Agent SDK. For **Claude.ai chat**, use the *remote* MCP endpoint deployed with
+> the app at `https://<your-site>/mcp` (add it as a custom connector in
+> Settings → Connectors). Both expose the identical `check_redirects` tool.
 
 ## Tool
 

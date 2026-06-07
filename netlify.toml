@@ -33,6 +33,11 @@
   status = 200
 
 [[redirects]]
+  from = "/mcp"
+  to = "/.netlify/functions/mcp"
+  status = 200
+
+[[redirects]]
   from = "/api/whoami"
   to = "/.netlify/functions/whoami"
   status = 200
