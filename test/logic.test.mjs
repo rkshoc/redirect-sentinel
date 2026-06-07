@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { classify, VERDICT, REASON } from '../netlify/functions/lib/verdict.mjs';
 import { tagServer, SERVER } from '../netlify/functions/lib/servertag.mjs';
 import { archivePaths, toCSV, summarise } from '../netlify/functions/lib/report.mjs';
-import { chunk, runBatched } from '../netlify/functions/lib/batch.mjs';
+import { chunk, runBatched, registrableDomain } from '../netlify/functions/lib/batch.mjs';
 import { resolveIdentity, checkLimit, ROLE_LIMITS, ANON_LIMIT, signIdentity, verifyIdentity } from '../netlify/functions/lib/auth.mjs';
 
 process.env.INTERNAL_TOKEN = 'test-signing-secret';
@@ -148,6 +148,38 @@ test('runBatched preserves order and processes all', async () => {
   const items = Array.from({ length: 7 }, (_, i) => i);
   const out = await runBatched(items, async (x) => x * 2, { batchSize: 3, concurrency: 2, cooldownMs: 0 });
   assert.deepEqual(out, [0, 2, 4, 6, 8, 10, 12]);
+});
+
+test('runBatched caps concurrency PER DOMAIN but parallelises ACROSS domains', async () => {
+  // 4 domains x 5 URLs each. Per-domain concurrency 2; global cap 8.
+  const items = [];
+  for (let d = 0; d < 4; d++) for (let u = 0; u < 5; u++) items.push({ source: `https://site${d}.com/p${u}` });
+  const perDomain = {}; // peak in-flight per registrable domain
+  let inFlight = 0, peakGlobal = 0;
+  const out = await runBatched(items, async (item) => {
+    const host = new URL(item.source).hostname;
+    perDomain[host] = (perDomain[host] || 0);
+    perDomain[host]++; inFlight++;
+    peakGlobal = Math.max(peakGlobal, inFlight);
+    perDomain[`peak_${host}`] = Math.max(perDomain[`peak_${host}`] || 0, perDomain[host]);
+    await new Promise((r) => setTimeout(r, 5));
+    perDomain[host]--; inFlight--;
+    return item.source;
+  }, { batchSize: 30, concurrency: 2, cooldownMs: 0, maxInFlight: 8 });
+
+  assert.equal(out.length, 20);
+  for (let d = 0; d < 4; d++) {
+    assert.ok(perDomain[`peak_site${d}.com`] <= 2, `site${d} exceeded per-domain concurrency`);
+  }
+  assert.ok(peakGlobal > 2, 'mixed domains should run more in parallel than a single domain would');
+  assert.ok(peakGlobal <= 8, 'global in-flight must respect maxInFlight');
+});
+
+test('registrableDomain groups subdomains and handles two-level TLDs', () => {
+  assert.equal(registrableDomain('www.brand.com'), 'brand.com');
+  assert.equal(registrableDomain('shop.brand.com'), 'brand.com');
+  assert.equal(registrableDomain('www.brand.co.uk'), 'brand.co.uk');
+  assert.equal(registrableDomain('brand.com'), 'brand.com');
 });
 
 // ---------- auth ----------

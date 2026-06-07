@@ -69,6 +69,7 @@ function batchOpts() {
     batchSize: Number(process.env.BATCH_SIZE) || BATCH_DEFAULTS.batchSize,
     concurrency: Number(process.env.BATCH_CONCURRENCY) || BATCH_DEFAULTS.concurrency,
     cooldownMs: Number(process.env.BATCH_COOLDOWN_MS) || BATCH_DEFAULTS.cooldownMs,
+    maxInFlight: Number(process.env.MAX_IN_FLIGHT) || BATCH_DEFAULTS.maxInFlight,
   };
 }
 
