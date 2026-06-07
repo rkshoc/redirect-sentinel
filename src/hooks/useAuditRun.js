@@ -64,9 +64,15 @@ export function useAuditRun({ onReport }) {
 
   const pollReport = useCallback(async (path) => {
     const deadline = Date.now() + 14 * 60 * 1000; // background fn max ~15 min
-    let interval = 3000;
+    // While the background job runs, /api/report returns 404 by design ("not
+    // written yet"). Back the poll interval off (2.5s → 6s) so a long job makes
+    // far fewer requests instead of hammering every 3s.
+    let polls = 0;
+    let partial = false;
     while (Date.now() < deadline && !cancelled.current) {
+      const interval = partial ? 12000 : Math.min(6000, 2500 + polls * 750);
       await new Promise((r) => setTimeout(r, interval));
+      polls++;
       if (cancelled.current) return;
       let data;
       try {
@@ -80,7 +86,7 @@ export function useAuditRun({ onReport }) {
       if (data && data.rows) {
         if (data.status === 'partial') {
           onReport(data); // live-refresh while deep-checks run
-          interval = 12000;
+          partial = true;
           continue;
         }
         finishProgress();
@@ -92,7 +98,7 @@ export function useAuditRun({ onReport }) {
     if (!cancelled.current) { setRunning(false); stopProgress(); setError('Audit timed out waiting for results. Check the History tab shortly.'); }
   }, [onReport, stopProgress, finishProgress]);
 
-  const run = useCallback(async ({ sheet, mapping, pasteText, baseUrl, user, limit }) => {
+  const run = useCallback(async ({ sheet, mapping, pasteText, user, limit }) => {
     setError('');
     const count = sheet ? auditableRows(sheet, mapping).length : parsePaste(pasteText).length;
     if (!count) { setError('Upload a sheet or paste URLs to begin.'); return; }
@@ -112,11 +118,11 @@ export function useAuditRun({ onReport }) {
       if (mapping.source == null) { stopProgress(); setRunning(false); setError('Map a Source URL column before running.'); return; }
       const rows = auditableRows(sheet, mapping);
       if (!rows.length) { stopProgress(); setRunning(false); setError('No rows have both a Source and Expected URL. Check your column mapping.'); return; }
-      payload = { mode: 'sheet', columns: sheet.columns, mapping, rows, baseUrl, id, timestamp: now.toISOString() };
+      payload = { mode: 'sheet', columns: sheet.columns, mapping, rows, id, timestamp: now.toISOString() };
     } else {
       const urls = parsePaste(pasteText);
       if (!urls.length) { stopProgress(); setRunning(false); setError('Paste at least one URL, or upload a sheet.'); return; }
-      payload = { mode: 'paste', urls, baseUrl, id, timestamp: now.toISOString() };
+      payload = { mode: 'paste', urls, id, timestamp: now.toISOString() };
     }
     if (token) payload._auth = token;
 
