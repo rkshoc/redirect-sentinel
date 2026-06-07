@@ -10,6 +10,7 @@
 // Playwright deep-check workflow for any WAF-blocked URLs (results land later
 // in a companion file that get-report merges).
 
+import zlib from 'node:zlib';
 import { trace, BROWSER_HEADERS } from './lib/engine.mjs';
 import { runBatched, BATCH_DEFAULTS, chunk } from './lib/batch.mjs';
 import { classify, VERDICT } from './lib/verdict.mjs';
@@ -82,6 +83,11 @@ export const handler = async (event, context) => {
   let payload;
   try {
     payload = JSON.parse(event.body || '{}');
+    // Large audits arrive gzipped (the 256 KB background-function body cap);
+    // transparently inflate { gz: base64 } back into the real payload.
+    if (payload && payload.gz) {
+      payload = JSON.parse(zlib.gunzipSync(Buffer.from(payload.gz, 'base64')).toString('utf8'));
+    }
   } catch {
     return json(400, { error: 'Bad request' });
   }

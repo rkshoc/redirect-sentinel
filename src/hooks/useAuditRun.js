@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ANON_LIMIT } from '../context/AuthContext.jsx';
 import { auditableRows, parsePaste } from '../lib/parse.js';
 import { predictPath, shortId } from '../lib/path.js';
-import { postAudit, getReport, whoami } from '../lib/api.js';
+import { postAudit, getReport, whoami, MAX_AUDIT_URLS } from '../lib/api.js';
 
 const fmtTime = (ms) => {
   const s = Math.max(0, Math.round(ms / 1000));
@@ -102,6 +102,7 @@ export function useAuditRun({ onReport }) {
     setError('');
     const count = sheet ? auditableRows(sheet, mapping).length : parsePaste(pasteText).length;
     if (!count) { setError('Upload a sheet or paste URLs to begin.'); return; }
+    if (count > MAX_AUDIT_URLS) { setError(`Audits are capped at ${MAX_AUDIT_URLS} URLs per run (payload + processing limits). Split larger sets into separate files.`); return; }
     if (count > limit) { setError(`${count} URLs exceeds your limit of ${limit === Infinity ? '∞' : limit}.`); return; }
     if (!user && count > ANON_LIMIT) { setError(`Log in to audit more than ${ANON_LIMIT} URLs.`); return; }
 

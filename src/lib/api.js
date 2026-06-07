@@ -28,13 +28,35 @@ export async function whoami(user) {
   return { token: null, userLabel: user.email };
 }
 
+// Hard cap per run — beyond this the compressed payload approaches Netlify's
+// 256 KB background-function limit and the 15-min processing window, so we ask
+// users to split instead (tier limits still apply below this).
+export const MAX_AUDIT_URLS = 3000;
+
+// gzip + base64 a string via the browser CompressionStream API.
+async function gzipBase64(str) {
+  const stream = new Blob([str]).stream().pipeThrough(new CompressionStream('gzip'));
+  const buf = new Uint8Array(await new Response(stream).arrayBuffer());
+  let bin = '';
+  for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+
 // POST the audit to the background worker. Returns the raw Response so the caller
 // can distinguish 202 (accepted) from a synchronous 4xx rejection.
+// Netlify background functions cap the request body at 256 KB; URL lists compress
+// ~10x (shared domains/targets), so we gzip large payloads to fit. The worker
+// transparently gunzips a { gz } body.
 export async function postAudit(payload) {
+  const json = JSON.stringify(payload);
+  let body = json;
+  if (json.length > 150000 && typeof CompressionStream !== 'undefined') {
+    try { body = JSON.stringify({ gz: await gzipBase64(json) }); } catch { body = json; }
+  }
   return fetch('/api/audit', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
-    body: JSON.stringify(payload),
+    body,
   });
 }
 
