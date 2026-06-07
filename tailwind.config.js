@@ -36,8 +36,8 @@ export default {
       keyframes: {
         shimmer: { '100%': { transform: 'translateX(100%)' } },
         aurora: {
-          '0%,100%': { transform: 'transl(-10%,-10%) rotate(0deg)' },
-          '50%': { transform: 'translate(10%,10%) rotate(8deg)' },
+          '0%,100%': { transform: 'translate(-8%,-6%) scale(1)' },
+          '50%': { transform: 'translate(8%,6%) scale(1.12)' },
         },
         beam: { '100%': { 'offset-distance': '100%' } },
         'fade-up': { from: { opacity: '0', transform: 'translateY(6px)' }, to: { opacity: '1', transform: 'none' } },
