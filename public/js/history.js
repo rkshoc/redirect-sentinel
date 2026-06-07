@@ -16,8 +16,11 @@ function monthName(mm) {
 
 function audCounts(a) {
   const s = a.summary || {};
-  return `<span class="fmeta"><span class="huser">${a.user || ''}</span>
-    <span class="hpass">${s.passed ?? 0} ✓</span><span class="hfailc">${s.failed ?? 0} ✕</span></span>`;
+  return `<span class="fmeta">
+    <span class="hchk">${s.checked ?? 0} checked</span>
+    <span class="hpass">${s.passed ?? 0} ✓</span>
+    <span class="hfailc">${s.failed ?? 0} ✕</span>
+    <span class="huser">${a.user || ''}</span></span>`;
 }
 
 // Render a collapsible folder node that loads its children on first expand.

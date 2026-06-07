@@ -1,6 +1,7 @@
-// Report rendering — summary headline, filterable failures-first table,
-// per-row expected-vs-actual diff + hop chain (CLAUDE.md §7). Mirrors the
-// approved mockup's verdict model.
+// Report rendering — data-dense sortable grid (CLAUDE.md §7). A compact summary
+// strip, filter chips + search, then a spreadsheet-style table with a sticky
+// header and click-to-sort columns. Each row expands in place to show the
+// expected-vs-actual diff + full hop chain. Verdict model unchanged.
 
 import { exportExcel, exportJSON } from './export.js';
 
@@ -8,10 +9,30 @@ const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => (
   { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 const SERVER_LABEL = { akamai: 'Akamai edge', dispatcher: 'AEM dispatcher', origin: 'AEM publish', unknown: 'origin · masked' };
+const VRANK = { FAIL: 0, BLOCKED: 1, INFO: 2, PASS: 3 };
+const VMETA = {
+  PASS: { c: 'pass', t: '✓ Pass' }, FAIL: { c: 'fail', t: '✕ Fail' },
+  BLOCKED: { c: 'blocked', t: '◷ Blocked' }, INFO: { c: 'info', t: '• Traced' },
+};
+const totalMs = (r) => (r.hops || []).reduce((a, h) => a + (h.timeMs || 0), 0);
+
+// Grid columns. `get` returns the value used for sorting; cells are rendered
+// per-type in rowEl. `num` right-aligns and sorts numerically.
+const COLS = [
+  { key: 'rule', label: 'Rule', get: (r) => r.ruleName || '' },
+  { key: 'source', label: 'Source', get: (r) => r.source || '' },
+  { key: 'expected', label: 'Target', get: (r) => r.expected || '' },
+  { key: 'final', label: 'Final', get: (r) => r.finalUrl || '' },
+  { key: 'verdict', label: 'Verdict', get: (r) => VRANK[r.verdict] ?? 9, num: true },
+  { key: 'hops', label: 'Hops', get: (r) => r.hopCount || 0, num: true },
+  { key: 'ms', label: 'ms', get: (r) => totalMs(r), num: true },
+];
 
 let current = null;       // the report being shown
 let filter = 'all';       // active filter chip
 let query = '';           // search text
+let sortKey = null;       // active sort column (null = failures-first default)
+let sortDir = 1;          // 1 asc, -1 desc
 const PAGE = 100;         // rows rendered per "page" (large audits can be huge)
 let shown = PAGE;         // how many filtered rows are currently rendered
 
@@ -53,33 +74,36 @@ function hopChain(hops) {
   return `<div class="chaintitle">Hop chain</div>${rows}`;
 }
 
+const ucell = (url) => (url ? `<span class="u" title="${esc(url)}">${esc(url)}</span>` : `<span class="dim">—</span>`);
+
 function rowEl(row) {
+  // Deep-check still pending — show a live spinner row, no expandable detail yet.
   if (row.deepPending && row.verdict === 'BLOCKED') {
-    return `<div class="res pending"><div class="rhead">
-      <span class="vtag blocked">◷ DEEP-CHECK</span>
-      <span class="rname"><div class="rule">${esc(row.ruleName || row.source)}</div>
-      <div class="src">${esc(row.source)} · WAF 403 → re-running via Playwright</div></span>
-      <span class="rmeta"><span class="spin"></span><span class="mini">~1 min</span></span></div></div>`;
+    return `<tr class="row v-blocked"><td class="cRule"><span class="u" title="${esc(row.ruleName || row.source)}">${esc(row.ruleName || row.source)}</span></td>
+      <td>${ucell(row.source)}</td><td class="dim">—</td><td class="dim">re-running via Playwright…</td>
+      <td><span class="vtag blocked"><span class="spin"></span> Deep-check</span></td>
+      <td class="num">${row.hopCount || 0}</td><td class="num dim">—</td></tr>`;
   }
   const vclass = row.verdict.toLowerCase();
-  const vlabel = { PASS: '✓ PASS', FAIL: '✕ FAIL', BLOCKED: '◷ BLOCKED', INFO: '• TRACED' }[row.verdict];
-  const srcLine = row.expected
-    ? `${esc(row.source)} → expected ${esc(row.expected)}`
-    : esc(row.source);
-  const metas = [
-    `<span class="mini">${row.hopCount} hop${row.hopCount === 1 ? '' : 's'}</span>`,
-    row.reason ? `<span class="mini">${esc(row.reason)}</span>` : (row.deepChecked ? `<span class="mini">deep-checked</span>` : ''),
-  ].join('');
+  const m = VMETA[row.verdict] || { c: 'info', t: row.verdict };
+  const vsub = row.verdict === 'FAIL' && row.reason
+    ? `<div class="vsub">${esc(row.reason)}</div>`
+    : (row.deepChecked ? `<div class="vsub dim">deep-checked</div>` : '');
   const good = row.verdict === 'PASS';
   const cmp = row.expected ? `<div class="cmp">
       <div class="box exp"><div class="bl">Expected</div><div class="bv">${esc(row.expected)}</div></div>
       <div class="box got ${good ? 'good' : 'bad'}"><div class="bl">Actual final</div><div class="bv">${esc(row.finalUrl)}${row.finalStatus && row.verdict === 'FAIL' && row.reason === 'broken' ? ' · ' + esc(row.finalStatus) : ''}</div></div>
     </div>` : '';
-  return `<div class="res ${vclass}"><div class="rhead" data-tog>
-      <span class="vtag ${vclass}">${vlabel}</span>
-      <span class="rname"><div class="rule">${esc(row.ruleName || '(no rule name)')}</div><div class="src">${srcLine}</div></span>
-      <span class="rmeta">${metas}<span class="chev">▶</span></span></div>
-    <div class="detail">${reasonBlock(row)}${cmp}${hopChain(row.hops)}</div></div>`;
+  const tr = `<tr class="row v-${vclass}" data-tog>
+      <td class="cRule"><span class="u rule" title="${esc(row.ruleName || '(no rule name)')}">${esc(row.ruleName || '(no rule name)')}</span></td>
+      <td>${ucell(row.source)}</td>
+      <td>${row.expected ? ucell(row.expected) : '<span class="dim">—</span>'}</td>
+      <td>${ucell(row.finalUrl)}</td>
+      <td><span class="vtag ${m.c}">${m.t}</span>${vsub}</td>
+      <td class="num">${row.hopCount || 0}</td>
+      <td class="num">${totalMs(row)}</td></tr>`;
+  const detail = `<tr class="detailrow"><td colspan="7"><div class="detailwrap">${reasonBlock(row)}${cmp}${hopChain(row.hops)}</div></td></tr>`;
+  return tr + detail;
 }
 
 function matchesFilter(row) {
@@ -95,14 +119,29 @@ function matchesFilter(row) {
 }
 
 function sortFailuresFirst(rows) {
-  const rank = { FAIL: 0, BLOCKED: 1, INFO: 2, PASS: 3 };
-  return [...rows].sort((a, b) => (rank[a.verdict] - rank[b.verdict]));
+  return [...rows].sort((a, b) => (VRANK[a.verdict] - VRANK[b.verdict]));
+}
+
+function sortRows(rows) {
+  if (!sortKey) return sortFailuresFirst(rows); // default view
+  const col = COLS.find((c) => c.key === sortKey);
+  return [...rows].sort((a, b) => {
+    const va = col.get(a), vb = col.get(b);
+    if (col.num) return (va - vb) * sortDir;
+    return String(va).toLowerCase().localeCompare(String(vb).toLowerCase()) * sortDir;
+  });
+}
+
+function headerCell(c) {
+  const active = sortKey === c.key;
+  const ind = active ? (sortDir > 0 ? '▲' : '▼') : '↕';
+  return `<th data-k="${c.key}" class="${c.num ? 'num' : ''}${active ? ' active' : ''}">${c.label}<span class="sort">${ind}</span></th>`;
 }
 
 export function renderReport(report, mount) {
-  // Reset filter/search/pagination only when a different report is loaded
-  // (re-renders for paging/filtering pass the same `current` object).
-  if (report !== current) { current = report; filter = 'all'; query = ''; shown = PAGE; }
+  // Reset filter/search/sort/pagination only when a different report is loaded
+  // (re-renders for paging/sorting/filtering pass the same `current` object).
+  if (report !== current) { current = report; filter = 'all'; query = ''; sortKey = null; sortDir = 1; shown = PAGE; }
   const s = report.summary || { checked: 0, passed: 0, failed: 0, blocked: 0, deepChecked: 0 };
   const counts = {
     all: report.rows.length,
@@ -113,51 +152,63 @@ export function renderReport(report, mount) {
 
   mount.innerHTML = `
     ${partial ? `<div class="banner ok show">Partial report — ${report.deepCheck?.pending || 0} URL(s) re-running via Playwright. This view refreshes automatically.</div>` : ''}
-    <div class="sumgrid">
-      <div class="stat n"><div class="n">${s.checked}</div><div class="l">Rules checked</div></div>
-      <div class="stat p"><div class="n" style="color:var(--pass)">${s.passed}</div><div class="l">Passed</div></div>
-      <div class="stat f"><div class="n" style="color:var(--fail)">${s.failed}</div><div class="l">Failed</div></div>
-      <div class="stat b"><div class="n" style="color:var(--blocked)">${s.blocked}</div><div class="l">Blocked</div></div>
-      <div class="stat t"><div class="n" style="color:var(--info)">${s.deepChecked}</div><div class="l">Deep-checked</div></div>
+    <div class="sumbar">
+      <span class="sb"><b>${s.checked}</b> checked</span>
+      <span class="sb p"><b style="color:var(--pass)">${s.passed}</b> passed</span>
+      <span class="sb f"><b style="color:var(--fail)">${s.failed}</b> failed</span>
+      <span class="sb b"><b style="color:var(--blocked)">${s.blocked}</b> blocked</span>
+      <span class="sb t"><b style="color:var(--info)">${s.deepChecked}</b> deep-checked</span>
+      ${report.filename ? `<span class="sb arch" title="${esc(report.filename)}">archived ✓</span>` : ''}
     </div>
     <div class="fbar">
       <span class="chip ${filter === 'all' ? 'on' : ''}" data-f="all">All (${counts.all})</span>
-      <span class="chip ${filter === 'fail' ? 'on' : ''}" data-f="fail">Failures first (${counts.fail})</span>
+      <span class="chip ${filter === 'fail' ? 'on' : ''}" data-f="fail">Failures (${counts.fail})</span>
       <span class="chip ${filter === 'blocked' ? 'on' : ''}" data-f="blocked">Blocked (${counts.blocked})</span>
       <span class="chip ${filter === '302' ? 'on' : ''}" data-f="302">302 present</span>
       <span class="chip ${filter === 'long' ? 'on' : ''}" data-f="long">Chains &gt; 2 hops</span>
       <input class="search" id="searchBox" placeholder="search rule / url…" value="${esc(query)}">
     </div>
-    <div style="display:flex;gap:9px;margin-bottom:14px;flex-wrap:wrap">
-      <button class="exp" id="expandAll">Expand all</button>
-      <button class="exp" id="expXlsx">⬇ Export Excel (+ verdict cols)</button>
-      <button class="exp" id="expJson">⬇ Export JSON</button>
-      <span class="hint" style="margin-left:auto;align-self:center">archived → ${esc(report.filename || '')}</span>
+    <div class="tbar">
+      <button class="exp" id="expandAll">⤢ Expand all</button>
+      <button class="exp" id="expXlsx">⬇ Excel (full hop chain)</button>
+      <button class="exp" id="expJson">⬇ JSON</button>
+      <span class="hint" id="rowcount"></span>
     </div>
-    <div id="rows"></div>
+    <div class="gridwrap">
+      <table class="grid">
+        <thead><tr>${COLS.map(headerCell).join('')}</tr></thead>
+        <tbody id="gbody"></tbody>
+      </table>
+    </div>
     <div id="more"></div>`;
 
-  const visible = sortFailuresFirst(report.rows.filter(matchesFilter));
+  const visible = sortRows(report.rows.filter(matchesFilter));
   const page = visible.slice(0, shown);
-  const rowsEl = mount.querySelector('#rows');
-  rowsEl.innerHTML = page.length ? page.map(rowEl).join('') : `<div class="empty">No rows match this filter.</div>`;
+  const body = mount.querySelector('#gbody');
+  body.innerHTML = page.length ? page.map(rowEl).join('') : `<tr><td colspan="7" class="gempty">No rows match this filter.</td></tr>`;
+  mount.querySelector('#rowcount').textContent = `${Math.min(shown, visible.length)} of ${visible.length} shown`;
 
   // "Show more" for large result sets — render in pages so thousands of rows
   // don't all hit the DOM at once.
   const moreEl = mount.querySelector('#more');
   if (visible.length > shown) {
     const remaining = visible.length - shown;
-    moreEl.innerHTML = `<div style="text-align:center;margin:8px 0 4px">
-      <button class="exp" id="showMore">Show ${Math.min(PAGE, remaining)} more · ${remaining} hidden</button></div>`;
+    moreEl.innerHTML = `<div class="morewrap"><button class="exp" id="showMore">Show ${Math.min(PAGE, remaining)} more · ${remaining} hidden</button></div>`;
     moreEl.querySelector('#showMore').addEventListener('click', () => { shown += PAGE; renderReport(current, mount); });
   } else {
     moreEl.innerHTML = '';
   }
 
   // wire interactions
-  mount.querySelectorAll('[data-tog]').forEach((h) => h.addEventListener('click', () => {
-    h.classList.toggle('open');
-    h.nextElementSibling.classList.toggle('show');
+  body.querySelectorAll('tr.row[data-tog]').forEach((tr) => tr.addEventListener('click', () => {
+    tr.classList.toggle('open');
+    const d = tr.nextElementSibling;
+    if (d && d.classList.contains('detailrow')) d.classList.toggle('show');
+  }));
+  mount.querySelectorAll('th[data-k]').forEach((th) => th.addEventListener('click', () => {
+    const k = th.dataset.k;
+    if (sortKey === k) sortDir = -sortDir; else { sortKey = k; sortDir = 1; }
+    renderReport(current, mount);
   }));
   mount.querySelectorAll('.chip').forEach((c) => c.addEventListener('click', () => {
     filter = c.dataset.f; shown = PAGE; renderReport(current, mount);
@@ -165,7 +216,11 @@ export function renderReport(report, mount) {
   const search = mount.querySelector('#searchBox');
   search.addEventListener('input', () => { query = search.value.toLowerCase(); shown = PAGE; renderReport(current, mount); search.focus(); });
   mount.querySelector('#expandAll').addEventListener('click', () => {
-    mount.querySelectorAll('[data-tog]').forEach((h) => { h.classList.add('open'); h.nextElementSibling.classList.add('show'); });
+    body.querySelectorAll('tr.row[data-tog]').forEach((tr) => {
+      tr.classList.add('open');
+      const d = tr.nextElementSibling;
+      if (d && d.classList.contains('detailrow')) d.classList.add('show');
+    });
   });
   mount.querySelector('#expXlsx').addEventListener('click', () => exportExcel(current));
   mount.querySelector('#expJson').addEventListener('click', () => exportJSON(current));
