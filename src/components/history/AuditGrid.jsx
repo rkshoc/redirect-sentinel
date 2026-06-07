@@ -1,14 +1,12 @@
 import { useMemo, useState } from 'react';
 import { ArrowDown, ArrowUp, ChevronsUpDown, FileText, Search } from 'lucide-react';
 import { cn } from '../../lib/cn.js';
+import { maskEmail, formatLocal } from '../../lib/format.js';
 
-const fmtDate = (a) => {
-  if (!a.createdUtc) return a.day || '—';
-  try { return new Date(a.createdUtc).toISOString().replace('T', ' ').slice(0, 16) + 'Z'; } catch { return a.createdUtc; }
-};
+const fmtDate = (a) => (a.createdUtc ? formatLocal(a.createdUtc, { tz: false }) : (a.day || '—'));
 
 const COLS = [
-  { key: 'date', label: 'Date (UTC)', get: (a) => a.createdUtc || a.day || '' },
+  { key: 'date', label: 'Date (local)', get: (a) => a.createdUtc || a.day || '' },
   { key: 'name', label: 'Audit', get: (a) => a.name || '' },
   { key: 'user', label: 'User', get: (a) => a.user || '' },
   { key: 'checked', label: 'Checked', num: true, get: (a) => a.summary?.checked ?? -1 },
@@ -83,7 +81,7 @@ export function AuditGrid({ audits, onOpenAudit }) {
                 <td className="px-3 py-2">
                   <span className="inline-flex items-center gap-1.5"><FileText size={12} className="text-aem" /> {a.name}</span>
                 </td>
-                <td className="px-3 py-2 text-faint">{a.user || '—'}</td>
+                <td className="px-3 py-2 text-faint">{maskEmail(a.user) || '—'}</td>
                 <td className="px-3 py-2 text-right text-muted">{a.summary?.checked ?? '—'}</td>
                 <td className="px-3 py-2 text-right text-pass">{a.summary?.passed ?? '—'}</td>
                 <td className="px-3 py-2 text-right text-fail">{a.summary?.failed ?? '—'}</td>

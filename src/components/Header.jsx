@@ -1,6 +1,7 @@
 import { Moon, Sun, LogIn, LogOut } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useTheme } from '../context/ThemeContext.jsx';
+import { maskEmail } from '../lib/format.js';
 
 export function Header() {
   const { user, role, limit, loggedIn, login, logout } = useAuth();
@@ -27,7 +28,7 @@ export function Header() {
         {loggedIn ? (
           <>
             <span className="rounded-full border border-aem/40 px-3 py-1 text-aem">{role || 'member'}</span>
-            <span className="hidden text-faint sm:inline">{limLabel} · {user.email}</span>
+            <span className="hidden text-faint sm:inline">{limLabel} · {maskEmail(user.email)}</span>
             <button
               onClick={logout}
               className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-muted transition hover:border-aem hover:text-ink"

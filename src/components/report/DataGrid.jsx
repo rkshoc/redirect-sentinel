@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import { ArrowDown, ArrowUp, ChevronsUpDown, Loader2 } from 'lucide-react';
 import { COLS, VMETA, matchesFilter, sortRows, totalMs } from '../../lib/verdict.js';
 import { cn } from '../../lib/cn.js';
 import { Filters } from './Filters.jsx';
 import { ExportButtons } from './ExportButtons.jsx';
 import { ReasonBlock } from './ReasonBlock.jsx';
+import { HopJourney } from './HopJourney.jsx';
 import { HopChain } from './HopChain.jsx';
 
 const PAGE = 100;
@@ -62,16 +64,28 @@ function ReportRow({ row, expanded, onToggle }) {
         <td className="px-3 py-2 text-right text-muted">{row.hopCount || 0}</td>
         <td className="px-3 py-2 text-right text-muted">{totalMs(row)}</td>
       </tr>
-      {expanded && (
-        <tr>
-          <td colSpan={7} className="border-b border-line2 bg-bg p-0">
-            <div className="animate-fade-up p-4">
-              <ReasonBlock row={row} />
-              <HopChain hops={row.hops} />
-            </div>
-          </td>
-        </tr>
-      )}
+      <tr>
+        <td colSpan={7} className="border-0 p-0">
+          <AnimatePresence initial={false}>
+            {expanded && (
+              <motion.div
+                key="detail"
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.28, ease: [0.4, 0, 0.2, 1] }}
+                className="overflow-hidden border-b border-line2 bg-bg"
+              >
+                <div className="p-4">
+                  <ReasonBlock row={row} />
+                  <HopJourney row={row} />
+                  <HopChain hops={row.hops} />
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </td>
+      </tr>
     </>
   );
 }

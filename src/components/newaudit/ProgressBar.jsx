@@ -16,11 +16,13 @@ export function ProgressBar({ progress }) {
           <div className="mb-2.5 flex items-center gap-2 font-mono text-[12.5px] text-ink">
             <Loader2 size={14} className="animate-spin text-aem" /> {progress.phase}
           </div>
-          <div className="h-2 overflow-hidden rounded-full border border-line bg-bg">
+          <div className="relative h-2 overflow-hidden rounded-full border border-line bg-bg">
             <div
-              className="h-full rounded-full bg-gradient-to-r from-aem to-ak transition-[width] duration-300"
+              className="relative h-full overflow-hidden rounded-full bg-gradient-to-r from-aem to-ak transition-[width] duration-300"
               style={{ width: `${progress.fillPct}%` }}
-            />
+            >
+              <span className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/50 to-transparent animate-shimmer" />
+            </div>
           </div>
           <div className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1.5 font-mono text-[11px] text-faint">
             <span><b className="text-muted">{progress.total}</b> URLs</span>

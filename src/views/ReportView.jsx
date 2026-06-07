@@ -19,7 +19,7 @@ export function ReportView({ report, loading }) {
       <Banner show={partial} tone="info">
         Partial report — {report.deepCheck?.pending || 0} URL(s) re-running via Playwright. This view refreshes automatically.
       </Banner>
-      <SummaryBar summary={report.summary} filename={report.filename} />
+      <SummaryBar summary={report.summary} filename={report.filename} createdUtc={report.createdUtc} />
       <DataGrid report={report} />
     </div>
   );
