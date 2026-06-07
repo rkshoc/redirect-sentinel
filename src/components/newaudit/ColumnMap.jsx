@@ -1,4 +1,3 @@
-import { auditableRows } from '../../lib/parse.js';
 import { cn } from '../../lib/cn.js';
 
 const ROLES = [
@@ -9,19 +8,17 @@ const ROLES = [
 
 // Column-mapping confirmation: detected columns + remap dropdowns + live preview
 // and an auditable-row count (CLAUDE.md §5). Positions are never hardcoded.
-export function ColumnMap({ sheet, mapping, onChange }) {
-  if (!sheet) return null;
-  const { columns, rows } = sheet;
-  const usable = auditableRows(sheet, mapping);
-  const first = usable[0] || rows[0] || [];
+// `columns`/`sampleRow` come from the reference (first) file; `usable`/`total`
+// are the COMBINED counts across all selected files; the mapping is matched by
+// header name in the other files.
+export function ColumnMap({ columns, sampleRow, rowCount, mapping, onChange, usable, total, fileCount }) {
   const needsExp = mapping.expected != null;
-
   const set = (key, value) => onChange({ ...mapping, [key]: value === -1 ? null : value });
 
   return (
     <div className="mt-4 rounded-xl border border-line bg-panel2/60 p-4">
       <h4 className="mb-3 font-mono text-[11px] uppercase tracking-wider text-muted">
-        Detected columns — confirm mapping ({rows.length} rows)
+        Detected columns — confirm mapping ({rowCount} rows{fileCount > 1 ? ` · ${fileCount} files, matched by header name` : ''})
       </h4>
       <div className="grid gap-2.5 sm:grid-cols-3">
         {ROLES.map(([key, label, required]) => (
@@ -40,15 +37,15 @@ export function ColumnMap({ sheet, mapping, onChange }) {
               <option value={-1}>— none —</option>
             </select>
             <div className="mt-1.5 truncate font-mono text-[11.5px] text-muted">
-              {mapping[key] == null ? '—' : String(first[mapping[key]] ?? '').slice(0, 40) || '—'}
+              {mapping[key] == null ? '—' : String(sampleRow[mapping[key]] ?? '').slice(0, 40) || '—'}
             </div>
           </div>
         ))}
       </div>
       <div className="mt-3 border-t border-line pt-3 font-mono text-[11.5px] text-aem">
-        <b>{usable.length}</b> of {rows.length} rows have a Source{needsExp ? ' + Expected' : ''} URL and will be audited
-        {usable.length < rows.length && (
-          <span className="text-faint"> · {rows.length - usable.length} blank/incomplete rows skipped</span>
+        <b>{usable}</b> of {total} rows have a Source{needsExp ? ' + Expected' : ''} URL and will be audited
+        {usable < total && (
+          <span className="text-faint"> · {total - usable} blank/incomplete rows skipped</span>
         )}
       </div>
     </div>

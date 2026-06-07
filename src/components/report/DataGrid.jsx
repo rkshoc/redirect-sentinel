@@ -5,6 +5,7 @@ import { cn } from '../../lib/cn.js';
 import { Filters } from './Filters.jsx';
 import { ExportButtons } from './ExportButtons.jsx';
 import { ReasonBlock } from './ReasonBlock.jsx';
+import { HopJourney } from './HopJourney.jsx';
 import { HopChain } from './HopChain.jsx';
 
 const PAGE = 100;
@@ -67,6 +68,7 @@ function ReportRow({ row, expanded, onToggle }) {
           <td colSpan={7} className="border-b border-line2 bg-bg p-0">
             <div className="animate-fade-up p-4">
               <ReasonBlock row={row} />
+              <HopJourney row={row} />
               <HopChain hops={row.hops} />
             </div>
           </td>

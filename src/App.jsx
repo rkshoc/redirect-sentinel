@@ -37,9 +37,13 @@ function Shell() {
   return (
     <>
       <PageBackground still={tab !== 0} />
-      <div className="mx-auto max-w-6xl px-5 pb-20 pt-6">
-        <Header />
-        <p className="mt-3 max-w-2xl text-[13.5px] leading-relaxed text-muted">{SUBTITLE}</p>
+      <div className="sticky top-0 z-40 border-b border-line/60 bg-bg/80 backdrop-blur-md">
+        <div className="mx-auto max-w-6xl px-5 py-3">
+          <Header />
+        </div>
+      </div>
+      <div className="mx-auto max-w-6xl px-5 pb-20 pt-5">
+        <p className="max-w-2xl text-[13.5px] leading-relaxed text-muted">{SUBTITLE}</p>
         <Tabs active={tab} onChange={setTab} />
         <div className="mt-6">
           <div className={tab === 0 ? '' : 'hidden'}><NewAuditView onReport={openReport} /></div>

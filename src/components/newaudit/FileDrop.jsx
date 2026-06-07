@@ -2,12 +2,16 @@ import { useRef, useState } from 'react';
 import { FileSpreadsheet } from 'lucide-react';
 import { cn } from '../../lib/cn.js';
 
-// Animated drop zone (Aceternity File Upload style) → calls onFile(file).
-export function FileDrop({ onFile }) {
+// Animated drop zone (Aceternity File Upload style). Accepts MULTIPLE files →
+// calls onFiles(File[]).
+export function FileDrop({ onFiles }) {
   const input = useRef(null);
   const [over, setOver] = useState(false);
 
-  const pick = (files) => { if (files && files[0]) onFile(files[0]); };
+  const pick = (fileList) => {
+    const files = Array.from(fileList || []);
+    if (files.length) onFiles(files);
+  };
 
   return (
     <div
@@ -24,11 +28,18 @@ export function FileDrop({ onFile }) {
       <div className="mx-auto mb-3 grid h-12 w-12 place-items-center rounded-xl bg-panel2 text-aem">
         <FileSpreadsheet size={22} />
       </div>
-      <div className="text-sm font-semibold">Drop your Excel/CSV here, or click to browse</div>
+      <div className="text-sm font-semibold">Drop your Excel/CSV files here, or click to browse</div>
       <div className="mt-1.5 font-mono text-[11px] text-faint">
-        Expected columns: Rule Name · Source URL · Expected Target · (extra cols carried, ignored)
+        One or more sheets · columns: Rule Name · Source URL · Expected Target · (extras carried, ignored)
       </div>
-      <input ref={input} type="file" accept=".xlsx,.xls,.csv" hidden onChange={(e) => pick(e.target.files)} />
+      <input
+        ref={input}
+        type="file"
+        accept=".xlsx,.xls,.csv"
+        multiple
+        hidden
+        onChange={(e) => { pick(e.target.files); e.target.value = ''; }}
+      />
     </div>
   );
 }
