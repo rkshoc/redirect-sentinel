@@ -67,16 +67,23 @@ Response: `{ count, summary:{checked,passed,failed,blocked}, results:[{ source,
 expected, finalUrl, finalStatus, hopCount, verdict, reason, error, hops:[...] }] }`.
 CORS-open.
 
-## MCP (use it from Claude)
+Add **`&format=md`** to a GET for a clean, readable summary (verdict + hop chain)
+instead of JSON — handy as a link in Claude.ai chat or opened in a browser:
 
-Same tool (`check_redirects`), two transports:
+```
+https://<your-site>/api/check?url=https://www.example.com/old-page&format=md
+```
 
-- **Remote (HTTP) — for Claude.ai chat.** A stateless MCP Streamable-HTTP
-  endpoint lives at **`/mcp`** (deployed alongside the app). Add it in Claude.ai
-  → **Settings → Connectors → Add custom connector** → URL
-  `https://<your-site>/mcp` (Pro/Max/Team/Enterprise plans). No auth — it only
-  runs ≤10-URL redirect checks. Then ask chat *"check these redirects."*
-- **Local (stdio) — for Claude Desktop / Claude Code.** See [`mcp/`](./mcp/).
+## Use it from Claude
+
+- **Claude.ai chat — no connector needed.** Paste the `?format=md` GET link
+  above into chat and ask Claude to fetch it (needs web browsing on). Best for a
+  quick single-URL *"where does this go?"* — one URL at a time, trace only.
+- **Claude.ai chat — custom connector.** A stateless MCP Streamable-HTTP endpoint
+  lives at **`/mcp`**. Add it in Claude.ai → **Settings → Connectors → Add custom
+  connector** → `https://<your-site>/mcp` (Pro/Max/Team/Enterprise). Exposes the
+  `check_redirects` tool (strict contract checks, up to 10 URLs).
+- **Claude Desktop / Claude Code.** Local (stdio) MCP server — see [`mcp/`](./mcp/).
 
 ## Develop
 
