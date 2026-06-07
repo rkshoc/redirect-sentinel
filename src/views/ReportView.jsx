@@ -14,10 +14,14 @@ export function ReportView({ report, loading }) {
     );
   }
   const partial = report.status === 'partial';
+  const deepError = report.deepCheck?.error;
   return (
     <div className="animate-fade-up">
-      <Banner show={partial} tone="info">
+      <Banner show={partial && !deepError} tone="info">
         Partial report — {report.deepCheck?.pending || 0} URL(s) re-running via Playwright. This view refreshes automatically.
+      </Banner>
+      <Banner show={!!deepError} tone="warn">
+        Deep-check unavailable — {deepError} The blocked rows stayed inconclusive (not counted as failures).
       </Banner>
       <SummaryBar summary={report.summary} filename={report.filename} createdUtc={report.createdUtc} />
       <DataGrid report={report} />

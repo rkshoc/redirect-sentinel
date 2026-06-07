@@ -38,9 +38,14 @@ export const COLS = [
 export function reasonInfo(row) {
   const v = row.verdict;
   if (v === 'PASS') return { tone: 'ok', text: 'Exact match. Final URL equals expected target.' };
-  if (v === 'BLOCKED') return { tone: 'info', text: `WAF-blocked / inconclusive — not counted as a failure.${row.deepPending ? ' Re-running via Playwright from a different IP.' : ''}` };
+  if (v === 'BLOCKED') {
+    const why = row.error ? `inconclusive (${row.error})` : 'WAF-blocked / inconclusive';
+    return { tone: 'info', text: `${why} — not counted as a failure.${row.deepPending ? ' Re-running via Playwright from a different IP.' : ''}` };
+  }
   if (v === 'INFO') return { tone: 'info', text: 'Traced (paste mode) — no expected target to compare against.' };
   switch (row.reason) {
+    case 'unreachable / network error':
+      return { tone: 'bad', text: `Unreachable — ${row.error || 'network error'}. No response from the server after retries.` };
     case 'real mismatch':
       return { tone: 'bad', text: 'Real mismatch — landed on a different path than the spec.' };
     case 'trivial difference':

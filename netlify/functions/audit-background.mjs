@@ -70,6 +70,9 @@ function batchOpts() {
     concurrency: Number(process.env.BATCH_CONCURRENCY) || BATCH_DEFAULTS.concurrency,
     cooldownMs: Number(process.env.BATCH_COOLDOWN_MS) || BATCH_DEFAULTS.cooldownMs,
     maxInFlight: Number(process.env.MAX_IN_FLIGHT) || BATCH_DEFAULTS.maxInFlight,
+    startInFlight: Number(process.env.START_IN_FLIGHT) || BATCH_DEFAULTS.startInFlight,
+    // A blocked/inconclusive trace is the throttle signal that drives back-off.
+    assess: (r) => (r && r.trace && (r.trace.blocked || r.trace.inconclusive)) ? 'blocked' : 'ok',
   };
 }
 
@@ -132,6 +135,8 @@ export const handler = async (event, context) => {
       hopCount: t.hopCount,
       blocked: t.blocked,
       loop: t.loop,
+      inconclusive: t.inconclusive,
+      error: t.error,
     });
     return {
       ruleName: r.ruleName,
@@ -196,7 +201,14 @@ export const handler = async (event, context) => {
       });
     } catch (e) {
       console.error('Deep-check dispatch failed:', e.message);
-      // Non-fatal: the base report still stands; rows remain BLOCKED.
+      // Surface it: write an error companion so the report reaches a TERMINAL
+      // state (get-report merges it) instead of spinning "pending" forever.
+      // Common cause: the GitHub token lacks `workflow` scope (see DEPLOY.md).
+      await putFile(
+        `${paths.dir}/${paths.base}.deepcheck.json`,
+        JSON.stringify({ error: `deep-check could not be started: ${e.message}`, results: [] }, null, 2),
+        `deep-check dispatch error ${paths.base}`,
+      ).catch((err) => console.error('Could not write deep-check error companion:', err.message));
     }
   }
 

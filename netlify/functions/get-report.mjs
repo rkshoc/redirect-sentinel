@@ -26,7 +26,21 @@ function safePath(p) {
 }
 
 function mergeDeepCheck(report, companion) {
-  if (!companion || !Array.isArray(companion.results)) return report;
+  if (!companion) return report;
+
+  // The fallback reported a hard error (e.g. dispatch failed — token missing the
+  // `workflow` scope, or the workflow run itself failed) and produced no
+  // results. Resolve to a TERMINAL state so the UI stops waiting: rows stay
+  // BLOCKED (inconclusive, not a FAIL) and we surface the reason.
+  if (companion.error && (!Array.isArray(companion.results) || companion.results.length === 0)) {
+    report.rows = report.rows.map((row) => (row.deepPending ? { ...row, deepPending: false } : row));
+    report.summary = summarise(report.rows);
+    report.status = 'complete';
+    if (report.deepCheck) { report.deepCheck.pending = 0; report.deepCheck.error = companion.error; }
+    return report;
+  }
+
+  if (!Array.isArray(companion.results)) return report;
   const bySource = new Map(companion.results.map((r) => [r.source, r]));
   let pending = 0;
   report.rows = report.rows.map((row) => {
@@ -48,7 +62,10 @@ function mergeDeepCheck(report, companion) {
   });
   report.summary = summarise(report.rows);
   report.status = pending > 0 ? 'partial' : 'complete';
-  if (report.deepCheck) report.deepCheck.pending = pending;
+  if (report.deepCheck) {
+    report.deepCheck.pending = pending;
+    if (companion.error) report.deepCheck.error = companion.error;
+  }
   return report;
 }
 

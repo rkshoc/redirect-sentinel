@@ -95,7 +95,16 @@ export function useAuditRun({ onReport }) {
         return;
       }
     }
-    if (!cancelled.current) { setRunning(false); stopProgress(); setError('Audit timed out waiting for results. Check the History tab shortly.'); }
+    if (!cancelled.current) {
+      setRunning(false);
+      stopProgress();
+      // Differentiate: a partial that never completed means the Playwright
+      // deep-check stalled (often a misconfigured token/secret), not that the
+      // HTTP audit failed — the base results are already shown.
+      setError(partial
+        ? 'Deep-check is still running after 14 min — it may be misconfigured (see DEPLOY troubleshooting). The HTTP results below stand; re-open this audit from History later to pick up deep-check results.'
+        : 'Audit timed out waiting for results. Check the History tab shortly.');
+    }
   }, [onReport, stopProgress, finishProgress]);
 
   const run = useCallback(async ({ sheet, mapping, pasteText, user, limit }) => {

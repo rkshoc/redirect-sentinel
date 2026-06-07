@@ -5,6 +5,7 @@ import { classify, VERDICT, REASON } from '../netlify/functions/lib/verdict.mjs'
 import { tagServer, SERVER } from '../netlify/functions/lib/servertag.mjs';
 import { archivePaths, toCSV, summarise } from '../netlify/functions/lib/report.mjs';
 import { chunk, runBatched, registrableDomain } from '../netlify/functions/lib/batch.mjs';
+import { sanitizeUrl, classifyFetchError } from '../netlify/functions/lib/engine.mjs';
 import { resolveIdentity, checkLimit, ROLE_LIMITS, ANON_LIMIT, signIdentity, verifyIdentity } from '../netlify/functions/lib/auth.mjs';
 
 process.env.INTERNAL_TOKEN = 'test-signing-secret';
@@ -180,6 +181,55 @@ test('registrableDomain groups subdomains and handles two-level TLDs', () => {
   assert.equal(registrableDomain('shop.brand.com'), 'brand.com');
   assert.equal(registrableDomain('www.brand.co.uk'), 'brand.co.uk');
   assert.equal(registrableDomain('brand.com'), 'brand.com');
+});
+
+test('runBatched backs off global concurrency under a throttle signal', async () => {
+  // The worker reports "blocked" whenever more than 3 requests are in flight —
+  // a stand-in for an IP/volume throttle. AIMD must drive concurrency down so
+  // that, after adapting, peak in-flight settles at/under the tolerated level.
+  const items = Array.from({ length: 120 }, (_, i) => ({ source: `https://h${i % 12}.com/p${i}` }));
+  let inFlight = 0;
+  const peaksOverTime = [];
+  const out = await runBatched(items, async () => {
+    inFlight++;
+    const breached = inFlight > 3;
+    peaksOverTime.push(inFlight);
+    await new Promise((r) => setTimeout(r, 3));
+    inFlight--;
+    return { trace: { blocked: breached, inconclusive: false } };
+  }, {
+    concurrency: 4, batchSize: 999, cooldownMs: 5,
+    startInFlight: 10, minInFlight: 1, maxInFlight: 10, rampEvery: 1000,
+    assess: (r) => (r.trace.blocked || r.trace.inconclusive ? 'blocked' : 'ok'),
+  });
+  assert.equal(out.length, 120);
+  // Early it overshoots (started at 10); the tail must have calmed right down.
+  const tail = peaksOverTime.slice(-30);
+  const tailMax = Math.max(...tail);
+  assert.ok(tailMax <= 4, `expected back-off to settle concurrency (tail peak ${tailMax})`);
+});
+
+test('sanitizeUrl strips wrapping quotes, whitespace and hidden chars', () => {
+  assert.equal(sanitizeUrl('  https://x.com/a  '), 'https://x.com/a');
+  assert.equal(sanitizeUrl('"https://x.com/a"'), 'https://x.com/a');
+  assert.equal(sanitizeUrl('﻿https://x.com/a'), 'https://x.com/a');
+  assert.equal(sanitizeUrl('https://x.com/a​'), 'https://x.com/a');
+});
+
+test('classifyFetchError marks transient failures inconclusive, NXDOMAIN hard', () => {
+  assert.deepEqual(classifyFetchError({ name: 'AbortError' }), { kind: 'timeout', inconclusive: true });
+  assert.equal(classifyFetchError({ cause: { code: 'ECONNRESET' } }).inconclusive, true);
+  assert.equal(classifyFetchError({ message: 'fetch failed' }).inconclusive, true);
+  assert.equal(classifyFetchError({ cause: { code: 'ENOTFOUND' } }).inconclusive, false);
+  assert.equal(classifyFetchError({ cause: { code: 'ENOTFOUND' } }).kind, 'host not found');
+});
+
+test('classify: inconclusive network failure is BLOCKED, hard failure is UNREACHABLE', () => {
+  const blocked = classify({ expected: 'https://x.com/a', finalUrl: null, finalStatus: null, hopCount: 1, inconclusive: true, error: 'timeout' });
+  assert.equal(blocked.verdict, VERDICT.BLOCKED);
+  const unreachable = classify({ expected: 'https://x.com/a', finalUrl: null, finalStatus: null, hopCount: 1, inconclusive: false, error: 'host not found' });
+  assert.equal(unreachable.verdict, VERDICT.FAIL);
+  assert.equal(unreachable.reason, REASON.UNREACHABLE);
 });
 
 // ---------- auth ----------

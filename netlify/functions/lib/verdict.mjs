@@ -17,6 +17,7 @@ export const REASON = {
   REAL: 'real mismatch',
   NO_REDIRECT: 'no redirect',
   BROKEN: 'broken',
+  UNREACHABLE: 'unreachable / network error',
   LOOP: 'loop / too many hops',
 };
 
@@ -54,10 +55,20 @@ function normaliseTrivial(raw) {
  * @returns {{verdict:string, reason:(string|null)}}
  */
 export function classify(input, opts = {}) {
-  const { expected, finalUrl, finalStatus, hopCount = 0, blocked = false, loop = false } = input;
+  const { expected, finalUrl, finalStatus, hopCount = 0, blocked = false, loop = false, inconclusive = false, error = null } = input;
 
-  // BLOCKED is not a real result — never a FAIL (CLAUDE.md §6).
-  if (blocked) return { verdict: VERDICT.BLOCKED, reason: null };
+  // BLOCKED is not a real result — never a FAIL (CLAUDE.md §6). A WAF block or
+  // an inconclusive network failure (timeout / reset / no response) both land
+  // here so they don't masquerade as a definitive FAIL and stay eligible for
+  // the Playwright fallback.
+  if (blocked || inconclusive) return { verdict: VERDICT.BLOCKED, reason: null };
+
+  // A hard, conclusive network failure (e.g. host not found) with no final URL
+  // is a real failure, but a *network* one — label it clearly, not "mismatch".
+  if (error && finalUrl == null) {
+    if (expected == null || String(expected).trim() === '') return { verdict: VERDICT.INFO, reason: null };
+    return { verdict: VERDICT.FAIL, reason: REASON.UNREACHABLE };
+  }
 
   // Paste mode: nothing to compare against, just informational trace.
   if (expected == null || String(expected).trim() === '') {
