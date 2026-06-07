@@ -65,8 +65,18 @@ curl -X POST https://<your-site>/api/check \
 
 Response: `{ count, summary:{checked,passed,failed,blocked}, results:[{ source,
 expected, finalUrl, finalStatus, hopCount, verdict, reason, error, hops:[...] }] }`.
-CORS-open. Note: consumer **Claude.ai chat cannot call this** — it doesn't make
-arbitrary HTTP requests; use the Claude **API**/an agent/MCP, or `curl`.
+CORS-open.
+
+## MCP (use it from Claude)
+
+Same tool (`check_redirects`), two transports:
+
+- **Remote (HTTP) — for Claude.ai chat.** A stateless MCP Streamable-HTTP
+  endpoint lives at **`/mcp`** (deployed alongside the app). Add it in Claude.ai
+  → **Settings → Connectors → Add custom connector** → URL
+  `https://<your-site>/mcp` (Pro/Max/Team/Enterprise plans). No auth — it only
+  runs ≤10-URL redirect checks. Then ask chat *"check these redirects."*
+- **Local (stdio) — for Claude Desktop / Claude Code.** See [`mcp/`](./mcp/).
 
 ## Develop
 
