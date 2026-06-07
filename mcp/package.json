@@ -1,0 +1,13 @@
+{
+  "name": "redirect-sentinel-mcp",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "MCP server exposing Redirect Sentinel's /api/check as a tool for Claude Desktop/Code.",
+  "bin": { "redirect-sentinel-mcp": "index.mjs" },
+  "engines": { "node": ">=18" },
+  "scripts": { "test": "node --test" },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  }
+}
