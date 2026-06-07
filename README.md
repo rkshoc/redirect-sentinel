@@ -79,6 +79,10 @@ https://<your-site>/api/check?url=https://www.example.com/old-page&format=md
 - **Claude.ai chat — no connector needed.** Paste the `?format=md` GET link
   above into chat and ask Claude to fetch it (needs web browsing on). Best for a
   quick single-URL *"where does this go?"* — one URL at a time, trace only.
+- **Many URLs (recommended for batches):** don't make chat fetch N links. Run the
+  batch **once** in the web app (WAF-safe + archived), then paste **one report
+  link** into chat — Claude reads all rows in a single fetch:
+  `https://<your-site>/api/report?path=YYYY/MM/DD/<file>.json&format=md`
 - **Claude.ai chat — custom connector.** A stateless MCP Streamable-HTTP endpoint
   lives at **`/mcp`**. Add it in Claude.ai → **Settings → Connectors → Add custom
   connector** → `https://<your-site>/mcp` (Pro/Max/Team/Enterprise). Exposes the
