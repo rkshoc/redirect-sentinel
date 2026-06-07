@@ -45,8 +45,10 @@ deep-check job uses this PAT.)
 ## 4. Deploy on Netlify
 
 1. Netlify → **Add new site → Import an existing project** → pick
-   `redirect-sentinel`. Build settings are read from `netlify.toml` (publish
-   `public/`, functions `netlify/functions/`). No build command needed.
+   `redirect-sentinel`. Build settings are read from `netlify.toml`: Netlify runs
+   `npm install` + `npm run build` (Vite/React) and publishes the `dist/` output;
+   functions come from `netlify/functions/`. You don't need to type anything —
+   the build command, publish dir, and Node version are pinned in `netlify.toml`.
 2. After the first deploy, go to **Site settings → Environment variables** and add:
 
    | Variable | Value | Notes |
@@ -143,9 +145,13 @@ Browser ─GET /api/whoami─▶ whoami (sync) ─ Identity clientContext ─▶
 
 ## Local dev (optional)
 
-Not required, but if you have Node 18+:
+Not required (the app deploys from the browser via Netlify), but if you have
+Node 18+ locally:
 
 ```
-npm test                 # run the unit tests
-npx netlify dev          # serve functions + frontend locally (needs Netlify CLI)
+npm install              # install React/Vite/Tailwind + tooling
+npm run dev              # Vite dev server (frontend only, hot reload)
+npm run build            # production build into dist/ (what Netlify runs)
+npm test                 # run the backend unit tests (node --test)
+npx netlify dev          # serve functions + frontend together (needs Netlify CLI)
 ```
