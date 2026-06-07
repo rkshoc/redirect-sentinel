@@ -77,8 +77,10 @@ export async function runChecks(input = {}) {
   return { count: rows.length, summary: summarise(rows), results: rows };
 }
 
-// Human-readable rendering (used as the MCP tool's text content).
-export function formatResults({ summary, results }) {
+// Human-readable rendering (used as the MCP tool's text content, and by the
+// /api/check?format=md link so Claude.ai chat / a browser get a clean summary).
+// Pass { hops: true } to append the per-hop chain under each result.
+export function formatResults({ summary, results }, opts = {}) {
   const lines = [`Checked ${summary.checked} — ${summary.passed} pass, ${summary.failed} fail, ${summary.blocked} blocked.`];
   for (const r of results) {
     const tag = r.verdict + (r.reason ? ` (${r.reason})` : '');
@@ -86,6 +88,12 @@ export function formatResults({ summary, results }) {
     const exp = r.expected ? `  expected: ${r.expected}` : '';
     const err = r.error ? `  ⚠ ${r.error}` : '';
     lines.push(`• ${tag} — ${r.source} → ${r.finalUrl ?? '—'}${status}${exp}${err}`);
+    if (opts.hops && Array.isArray(r.hops) && r.hops.length) {
+      for (const h of r.hops) {
+        const arrow = h.location ? ` → ${h.location}` : '';
+        lines.push(`    ${h.status ?? '—'}  ${h.url}${arrow}  (${h.server}, ${h.timeMs}ms)`);
+      }
+    }
   }
   return lines.join('\n');
 }
