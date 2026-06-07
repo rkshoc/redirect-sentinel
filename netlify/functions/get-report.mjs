@@ -10,6 +10,7 @@
 import { getFile } from './lib/github.mjs';
 import { summarise } from './lib/report.mjs';
 import { VERDICT } from './lib/verdict.mjs';
+import { formatResults } from './lib/check-core.mjs';
 
 const json = (body, status = 200) => ({
   statusCode: status,
@@ -89,6 +90,20 @@ export const handler = async (event) => {
       const comp = await getFile(compPath);
       if (comp) mergeDeepCheck(base, JSON.parse(comp.content));
     } catch { /* companion not ready yet — return partial */ }
+  }
+
+  // ?format=md|text → a clean readable summary of the whole report (verdict +
+  // hop chains), so a finished audit of any size can be read by Claude.ai chat
+  // (or a browser) in a SINGLE fetch instead of one request per URL.
+  const fmt = String((event.queryStringParameters || {}).format || '').toLowerCase();
+  if (['md', 'markdown', 'text'].includes(fmt)) {
+    const head = `${base.filename || 'audit'} — ${base.status || 'complete'} — ${base.createdUtc || ''}`;
+    const body = `${head}\n${'='.repeat(head.length)}\n${formatResults({ summary: base.summary, results: base.rows || [] }, { hops: true })}`;
+    return {
+      statusCode: 200,
+      headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': '*' },
+      body,
+    };
   }
 
   return json(base);
