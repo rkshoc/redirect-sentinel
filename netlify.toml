@@ -3,9 +3,14 @@
 # so no local CLI is required.
 
 [build]
-  # Static frontend lives in /public. No build step — plain HTML/CSS/JS.
-  publish = "public"
+  # React + Vite SPA. Netlify runs `npm install` then this command and publishes
+  # the Vite output in /dist. Functions stay in netlify/functions.
+  command = "npm run build"
+  publish = "dist"
   functions = "netlify/functions"
+
+[build.environment]
+  NODE_VERSION = "20"
 
 [functions]
   # ESM source; bundle deps with esbuild. Functions are dependency-free
