@@ -1,5 +1,6 @@
-import { Check } from 'lucide-react';
+import { Check, Clock } from 'lucide-react';
 import { NumberTicker } from '../ui/NumberTicker.jsx';
+import { formatLocal } from '../../lib/format.js';
 
 const STATS = [
   { key: 'checked', label: 'Checked', color: 'text-ink' },
@@ -10,7 +11,7 @@ const STATS = [
 ];
 
 // Compact, data-dense summary strip (bento-ish) with animated counters.
-export function SummaryBar({ summary, filename }) {
+export function SummaryBar({ summary, filename, createdUtc }) {
   const s = summary || {};
   return (
     <div className="mb-4 flex flex-wrap items-center gap-x-6 gap-y-3 rounded-2xl border border-line bg-panel/70 px-5 py-4 backdrop-blur-sm">
@@ -20,8 +21,13 @@ export function SummaryBar({ summary, filename }) {
           <span className="font-mono text-[11px] uppercase tracking-wide text-muted">{st.label}</span>
         </div>
       ))}
+      {createdUtc && (
+        <span className="ml-auto inline-flex items-center gap-1.5 font-mono text-[11px] text-muted" title={`${createdUtc} (UTC)`}>
+          <Clock size={13} /> ran {formatLocal(createdUtc)}
+        </span>
+      )}
       {filename && (
-        <span className="ml-auto inline-flex items-center gap-1.5 font-mono text-[11px] text-pass" title={filename}>
+        <span className={`${createdUtc ? '' : 'ml-auto'} inline-flex items-center gap-1.5 font-mono text-[11px] text-pass`} title={filename}>
           <Check size={13} /> archived
         </span>
       )}

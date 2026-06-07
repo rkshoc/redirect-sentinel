@@ -1,15 +1,12 @@
 import { useMemo, useState } from 'react';
 import { ArrowDown, ArrowUp, ChevronsUpDown, FileText, Search } from 'lucide-react';
 import { cn } from '../../lib/cn.js';
-import { maskEmail } from '../../lib/format.js';
+import { maskEmail, formatLocal } from '../../lib/format.js';
 
-const fmtDate = (a) => {
-  if (!a.createdUtc) return a.day || '—';
-  try { return new Date(a.createdUtc).toISOString().replace('T', ' ').slice(0, 16) + 'Z'; } catch { return a.createdUtc; }
-};
+const fmtDate = (a) => (a.createdUtc ? formatLocal(a.createdUtc, { tz: false }) : (a.day || '—'));
 
 const COLS = [
-  { key: 'date', label: 'Date (UTC)', get: (a) => a.createdUtc || a.day || '' },
+  { key: 'date', label: 'Date (local)', get: (a) => a.createdUtc || a.day || '' },
   { key: 'name', label: 'Audit', get: (a) => a.name || '' },
   { key: 'user', label: 'User', get: (a) => a.user || '' },
   { key: 'checked', label: 'Checked', num: true, get: (a) => a.summary?.checked ?? -1 },
