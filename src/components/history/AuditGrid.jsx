@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { ArrowDown, ArrowUp, ChevronsUpDown, FileText, Search } from 'lucide-react';
 import { cn } from '../../lib/cn.js';
+import { maskEmail } from '../../lib/format.js';
 
 const fmtDate = (a) => {
   if (!a.createdUtc) return a.day || '—';
@@ -83,7 +84,7 @@ export function AuditGrid({ audits, onOpenAudit }) {
                 <td className="px-3 py-2">
                   <span className="inline-flex items-center gap-1.5"><FileText size={12} className="text-aem" /> {a.name}</span>
                 </td>
-                <td className="px-3 py-2 text-faint">{a.user || '—'}</td>
+                <td className="px-3 py-2 text-faint">{maskEmail(a.user) || '—'}</td>
                 <td className="px-3 py-2 text-right text-muted">{a.summary?.checked ?? '—'}</td>
                 <td className="px-3 py-2 text-right text-pass">{a.summary?.passed ?? '—'}</td>
                 <td className="px-3 py-2 text-right text-fail">{a.summary?.failed ?? '—'}</td>
