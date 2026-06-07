@@ -1,4 +1,5 @@
-import { Globe, Server, Flag, ArrowRight, Check, X, Ban } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { Globe, Server, Flag, Check, X, Ban } from 'lucide-react';
 import { SERVER_LABEL } from '../../lib/verdict.js';
 import { cn } from '../../lib/cn.js';
 
@@ -22,6 +23,12 @@ function statusTone(code) {
   if (code === 403 || code === 429) return 'text-blocked border-blocked/40 bg-blocked/10';
   return 'text-fail border-fail/40 bg-fail/10';
 }
+// The colour that "flows" along the connector leaving this hop.
+function flowColor(code) {
+  if (code === 301 || code === 308) return 'rgb(var(--pass))';
+  if (code === 302 || code === 307) return 'rgb(var(--warn))';
+  return 'rgb(var(--aem))';
+}
 
 function parts(url) {
   try { const u = new URL(url); return { host: u.host, path: (u.pathname + u.search) || '/' }; }
@@ -29,6 +36,33 @@ function parts(url) {
 }
 
 const SRV_DOT = { akamai: 'bg-ak', dispatcher: 'bg-aem', origin: 'bg-origin', unknown: 'bg-unknown' };
+
+const container = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.12, delayChildren: 0.05 } },
+};
+const item = {
+  hidden: { opacity: 0, y: 10, scale: 0.95 },
+  show: { opacity: 1, y: 0, scale: 1, transition: { type: 'spring', stiffness: 320, damping: 26 } },
+};
+
+// A connector with a light "packet" flowing in the direction of the redirect.
+function Connector({ code }) {
+  const color = flowColor(code);
+  return (
+    <motion.div variants={item} className="flex w-12 shrink-0 flex-col items-center justify-center gap-1 self-center">
+      <div className="relative h-[3px] w-full overflow-hidden rounded-full bg-line">
+        <motion.div
+          className="absolute inset-y-0 w-1/3 rounded-full"
+          style={{ background: `linear-gradient(90deg, transparent, ${color}, transparent)` }}
+          animate={{ x: ['-120%', '320%'] }}
+          transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
+        />
+      </div>
+      <span className="font-mono text-[9px] text-faint">{code || '—'}</span>
+    </motion.div>
+  );
+}
 
 // Friendly left-to-right map of the redirect: Source → … → Destination, each hop
 // colour-coded with its status in plain English (CLAUDE.md §6 display).
@@ -45,7 +79,7 @@ export function HopJourney({ row }) {
   return (
     <div className="mb-4">
       <div className="mb-2.5 font-mono text-[10px] uppercase tracking-wider text-faint">Redirect journey</div>
-      <div className="flex items-stretch gap-1 overflow-x-auto pb-2">
+      <motion.div variants={container} initial="hidden" animate="show" className="flex items-stretch gap-1 overflow-x-auto pb-2">
         {hops.map((h, i) => {
           const last = i === hops.length - 1;
           const { host, path } = parts(h.url);
@@ -53,10 +87,17 @@ export function HopJourney({ row }) {
           const label = i === 0 ? 'Source' : last ? 'Destination' : `Step ${i + 1}`;
           return (
             <div key={i} className="flex items-stretch gap-1">
-              {/* Node card */}
-              <div className={cn('flex w-[180px] shrink-0 flex-col gap-1.5 rounded-xl border bg-bg/70 p-3', last ? endTone : 'border-line')}>
+              <motion.div
+                variants={item}
+                whileHover={{ y: -3 }}
+                className={cn('flex w-[184px] shrink-0 flex-col gap-1.5 rounded-xl border bg-bg/70 p-3 transition-shadow hover:shadow-lg hover:shadow-aem/10', last ? endTone : 'border-line')}
+              >
                 <div className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wide text-muted">
-                  <Icon size={13} className={last ? '' : i === 0 ? 'text-aem' : 'text-faint'} /> {label}
+                  <span className="relative grid h-5 w-5 place-items-center">
+                    {i === 0 && <span className="absolute inset-0 rounded-full bg-aem/30" style={{ animation: 'pulse-ring 1.8s ease-out infinite' }} />}
+                    <Icon size={13} className={cn('relative', last ? '' : i === 0 ? 'text-aem' : 'text-faint')} />
+                  </span>
+                  {label}
                 </div>
                 <div title={h.url} className="truncate font-mono text-[12px] font-semibold text-ink">{path}</div>
                 {host && <div title={h.url} className="truncate font-mono text-[10px] text-faint">{host}</div>}
@@ -70,17 +111,12 @@ export function HopJourney({ row }) {
                   <span className={cn('h-1.5 w-1.5 rounded-full', SRV_DOT[h.server] || SRV_DOT.unknown)} />
                   {SERVER_LABEL[h.server] || h.server}
                 </div>
-              </div>
-              {/* Connector to the next hop */}
-              {!last && (
-                <div className="flex w-7 shrink-0 flex-col items-center justify-center text-faint">
-                  <ArrowRight size={16} />
-                </div>
-              )}
+              </motion.div>
+              {!last && <Connector code={h.status} />}
             </div>
           );
         })}
-      </div>
+      </motion.div>
     </div>
   );
 }

@@ -21,11 +21,11 @@ export function FileDrop({ onFiles }) {
       onDragLeave={(e) => { e.preventDefault(); setOver(false); }}
       onDrop={(e) => { e.preventDefault(); setOver(false); pick(e.dataTransfer.files); }}
       className={cn(
-        'cursor-pointer rounded-2xl border border-dashed bg-bg/40 p-8 text-center transition',
-        over ? 'border-aem bg-panel2' : 'border-line2 hover:border-aem hover:bg-panel2/60',
+        'group cursor-pointer rounded-2xl border border-dashed bg-bg/40 p-8 text-center transition-all duration-300',
+        over ? 'scale-[1.01] border-aem bg-panel2 shadow-xl shadow-aem/20' : 'border-line2 hover:border-aem hover:bg-panel2/60',
       )}
     >
-      <div className="mx-auto mb-3 grid h-12 w-12 place-items-center rounded-xl bg-panel2 text-aem">
+      <div className={cn('mx-auto mb-3 grid h-12 w-12 place-items-center rounded-xl bg-panel2 text-aem transition-transform group-hover:scale-110', over && 'float')}>
         <FileSpreadsheet size={22} />
       </div>
       <div className="text-sm font-semibold">Drop your Excel/CSV files here, or click to browse</div>

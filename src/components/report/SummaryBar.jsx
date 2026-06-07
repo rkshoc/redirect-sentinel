@@ -1,6 +1,10 @@
+import { motion } from 'framer-motion';
 import { Check, Clock } from 'lucide-react';
 import { NumberTicker } from '../ui/NumberTicker.jsx';
 import { formatLocal } from '../../lib/format.js';
+
+const container = { hidden: {}, show: { transition: { staggerChildren: 0.07 } } };
+const item = { hidden: { opacity: 0, y: 8, scale: 0.9 }, show: { opacity: 1, y: 0, scale: 1, transition: { type: 'spring', stiffness: 380, damping: 24 } } };
 
 const STATS = [
   { key: 'checked', label: 'Checked', color: 'text-ink' },
@@ -14,12 +18,17 @@ const STATS = [
 export function SummaryBar({ summary, filename, createdUtc }) {
   const s = summary || {};
   return (
-    <div className="mb-4 flex flex-wrap items-center gap-x-6 gap-y-3 rounded-2xl border border-line bg-panel/70 px-5 py-4 backdrop-blur-sm">
+    <motion.div
+      variants={container}
+      initial="hidden"
+      animate="show"
+      className="mb-4 flex flex-wrap items-center gap-x-6 gap-y-3 rounded-2xl border border-line bg-panel/70 px-5 py-4 backdrop-blur-sm"
+    >
       {STATS.map((st) => (
-        <div key={st.key} className="flex items-baseline gap-2">
+        <motion.div key={st.key} variants={item} className="flex items-baseline gap-2">
           <NumberTicker value={s[st.key] || 0} className={`font-mono text-2xl font-bold ${st.color}`} />
           <span className="font-mono text-[11px] uppercase tracking-wide text-muted">{st.label}</span>
-        </div>
+        </motion.div>
       ))}
       {createdUtc && (
         <span className="ml-auto inline-flex items-center gap-1.5 font-mono text-[11px] text-muted" title={`${createdUtc} (UTC)`}>
@@ -31,6 +40,6 @@ export function SummaryBar({ summary, filename, createdUtc }) {
           <Check size={13} /> archived
         </span>
       )}
-    </div>
+    </motion.div>
   );
 }

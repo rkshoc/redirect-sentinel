@@ -61,13 +61,25 @@
 @layer components {
   .gradient-brand {
     @apply bg-clip-text text-transparent;
-    background-image: linear-gradient(90deg, rgb(var(--ak)), rgb(var(--aem)), rgb(var(--origin)));
+    background-image: linear-gradient(100deg, rgb(var(--ak)), rgb(var(--aem)), rgb(var(--origin)), rgb(var(--ak)));
+    background-size: 200% auto;
+    animation: gradient-x 6s ease infinite;
   }
+  /* Cards get a soft hover lift + accent edge. */
   .card { @apply bg-panel/80 border border-line rounded-2xl backdrop-blur-sm; }
+  .card-hover { @apply transition-all duration-300; }
+  .card-hover:hover {
+    @apply -translate-y-0.5 border-aem/40;
+    box-shadow: 0 12px 40px -16px rgb(var(--aem) / 0.35);
+  }
 }
 
-/* Border-beam path for the progress bar / cards (Magic UI style). */
-.beam {
-  offset-path: rect(0 auto auto 0 round 12px);
-  animation: beam 4s linear infinite;
+@keyframes gradient-x { 0%, 100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
+@keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+@keyframes pulse-ring { 0% { transform: scale(0.9); opacity: 0.5; } 100% { transform: scale(1.6); opacity: 0; } }
+.float { animation: float 3.2s ease-in-out infinite; }
+
+/* Respect reduced-motion preferences. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
 }
