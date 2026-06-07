@@ -45,48 +45,47 @@ See the data-flow diagram and full setup in [`DEPLOY.md`](./DEPLOY.md).
 ## API (`POST /api/check`)
 
 A synchronous endpoint for non-browser callers (scripts, the Claude API with
-tool-use, an MCP server). Runs the same engine + strict verdict model and
-returns results **inline** — no login, no archival, no polling. Capped at 10
-URLs per call (use the in-app audit flow for larger sets).
+tool-use, an MCP server, or Claude.ai chat fetching a link). Runs the same engine
++ strict verdict model and returns results **inline** — no login, no archival, no
+polling. Up to **75 URLs per call**, bounded by an overall ~8s time budget so it
+never times out (URLs unfinished by then come back BLOCKED; use the in-app audit
+flow for larger/slower sets).
 
 ```bash
 # Single URL (quick status / redirect trace)
 curl "https://<your-site>/api/check?url=https://www.example.com/old-page"
 
-# Contract check — does each source land on its expected target?
+# Whole list in ONE GET — comma-separated, add &format=md for a readable summary
+curl "https://<your-site>/api/check?format=md&urls=https://ex.com/a,https://ex.com/b,https://ex.com/c"
+
+# Contract check — does each source land on its expected target? (POST)
 curl -X POST https://<your-site>/api/check \
   -H 'Content-Type: application/json' \
   -d '{"items":[{"source":"https://ex.com/a","expected":"https://ex.com/b","ruleName":"R1"}]}'
-
-# Plain list (no expected target — just trace + report each chain)
-curl -X POST https://<your-site>/api/check \
-  -H 'Content-Type: application/json' -d '{"urls":["https://ex.com/x","https://ex.com/y"]}'
 ```
 
-Response: `{ count, summary:{checked,passed,failed,blocked}, results:[{ source,
+JSON response: `{ count, summary:{checked,passed,failed,blocked}, results:[{ source,
 expected, finalUrl, finalStatus, hopCount, verdict, reason, error, hops:[...] }] }`.
-CORS-open.
-
-Add **`&format=md`** to a GET for a clean, readable summary (verdict + hop chain)
-instead of JSON — handy as a link in Claude.ai chat or opened in a browser:
-
-```
-https://<your-site>/api/check?url=https://www.example.com/old-page&format=md
-```
+`&format=md` returns a readable text summary (verdict + hop chain) instead. CORS-open.
 
 ## Use it from Claude
 
-- **Claude.ai chat — no connector needed.** Paste the `?format=md` GET link
-  above into chat and ask Claude to fetch it (needs web browsing on). Best for a
-  quick single-URL *"where does this go?"* — one URL at a time, trace only.
-- **Many URLs (recommended for batches):** don't make chat fetch N links. Run the
-  batch **once** in the web app (WAF-safe + archived), then paste **one report
-  link** into chat — Claude reads all rows in a single fetch:
-  `https://<your-site>/api/report?path=YYYY/MM/DD/<file>.json&format=md`
+- **Claude.ai chat — no connector, whole batch in one go.** The `urls=` GET takes
+  up to 75 comma-separated URLs, so Claude makes a *single* fetch for a pasted
+  list. Give it this once (e.g. in a Project, or just in the message):
+
+  > To check redirects, make ONE web fetch to
+  > `https://<your-site>/api/check?format=md&urls=URL1,URL2,…` (URL-encoded,
+  > up to 75), then summarise the result and flag any FAIL / BLOCKED rows. For
+  > more than 75 URLs, tell me to use the web app.
+
+  Trace-only (no expected-target contract check via GET); needs web browsing on.
 - **Claude.ai chat — custom connector.** A stateless MCP Streamable-HTTP endpoint
   lives at **`/mcp`**. Add it in Claude.ai → **Settings → Connectors → Add custom
   connector** → `https://<your-site>/mcp` (Pro/Max/Team/Enterprise). Exposes the
-  `check_redirects` tool (strict contract checks, up to 10 URLs).
+  `check_redirects` tool, incl. strict contract checks (up to 75 URLs).
+- **Read a finished audit in chat.** Any archived report renders as text for a
+  single fetch: `https://<your-site>/api/report?path=YYYY/MM/DD/<file>.json&format=md`.
 - **Claude Desktop / Claude Code.** Local (stdio) MCP server — see [`mcp/`](./mcp/).
 
 ## Develop

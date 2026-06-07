@@ -43,7 +43,12 @@ export const handler = async (event) => {
   if (event.httpMethod === 'POST' && event.body) {
     try { Object.assign(input, JSON.parse(event.body)); } catch { return json(400, { error: 'Invalid JSON body.' }); }
   } else if (event.httpMethod === 'GET') {
-    if (q.url) input.urls = Array.isArray(q.url) ? q.url : [q.url];
+    // Accept repeated ?url=… AND a single ?urls=… holding a comma / newline /
+    // space-separated list (easier for a chat assistant to build one fetch).
+    const list = [];
+    if (q.url) list.push(...(Array.isArray(q.url) ? q.url : [q.url]));
+    if (q.urls) list.push(...String(q.urls).split(/[\s,]+/));
+    input.urls = list;
     if (q.baseUrl) input.baseUrl = q.baseUrl;
   }
 
