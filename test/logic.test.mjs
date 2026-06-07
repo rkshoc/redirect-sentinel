@@ -6,6 +6,7 @@ import { tagServer, SERVER } from '../netlify/functions/lib/servertag.mjs';
 import { archivePaths, toCSV, summarise } from '../netlify/functions/lib/report.mjs';
 import { chunk, runBatched, registrableDomain } from '../netlify/functions/lib/batch.mjs';
 import { sanitizeUrl, classifyFetchError } from '../netlify/functions/lib/engine.mjs';
+import { buildItems, runChecks, formatResults, MAX } from '../netlify/functions/lib/check-core.mjs';
 import { resolveIdentity, checkLimit, ROLE_LIMITS, ANON_LIMIT, signIdentity, verifyIdentity } from '../netlify/functions/lib/auth.mjs';
 
 process.env.INTERNAL_TOKEN = 'test-signing-secret';
@@ -230,6 +231,37 @@ test('classify: inconclusive network failure is BLOCKED, hard failure is UNREACH
   const unreachable = classify({ expected: 'https://x.com/a', finalUrl: null, finalStatus: null, hopCount: 1, inconclusive: false, error: 'host not found' });
   assert.equal(unreachable.verdict, VERDICT.FAIL);
   assert.equal(unreachable.reason, REASON.UNREACHABLE);
+});
+
+test('check-core: buildItems handles urls and items, runChecks enforces the cap', async () => {
+  assert.deepEqual(buildItems({ urls: ['https://a.com/x', ' '] }).map((i) => i.source), ['https://a.com/x']);
+  assert.equal(buildItems({ items: [{ source: 'https://a.com/x', expected: 'https://b.com/y' }] })[0].expected, 'https://b.com/y');
+  const tooMany = { urls: Array.from({ length: MAX + 1 }, (_, i) => `https://x/${i}`) };
+  await assert.rejects(runChecks(tooMany), /Capped at/);
+  await assert.rejects(runChecks({ urls: [] }), /Provide/);
+});
+
+test('runChecks honours an overall deadline (unfinished URLs come back inconclusive)', async () => {
+  // Point at a non-routable address so connects hang; a tiny deadline must make
+  // the whole call return promptly with BLOCKED/inconclusive rows, not hang.
+  const t0 = Date.now();
+  const out = await runChecks({ urls: ['http://10.255.255.1/a', 'http://10.255.255.1/b'] }, { deadlineMs: 300 });
+  const elapsed = Date.now() - t0;
+  assert.ok(elapsed < 4000, `expected prompt return, took ${elapsed}ms`);
+  assert.equal(out.results.length, 2);
+  assert.ok(out.results.every((r) => r.verdict === 'BLOCKED'), 'unfinished rows should be BLOCKED/inconclusive');
+});
+
+test('formatResults can append the per-hop chain', () => {
+  const text = formatResults({
+    summary: { checked: 1, passed: 1, failed: 0, blocked: 0 },
+    results: [{ verdict: 'PASS', source: 'https://a', finalUrl: 'https://b', finalStatus: 200, hops: [
+      { url: 'https://a', status: 301, server: 'akamai', location: 'https://b', timeMs: 12 },
+      { url: 'https://b', status: 200, server: 'origin', location: null, timeMs: 5 },
+    ] }],
+  }, { hops: true });
+  assert.match(text, /301  https:\/\/a → https:\/\/b  \(akamai, 12ms\)/);
+  assert.match(text, /200  https:\/\/b  \(origin, 5ms\)/);
 });
 
 // ---------- auth ----------

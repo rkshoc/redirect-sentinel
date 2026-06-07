@@ -9,10 +9,17 @@ import { trace } from './engine.mjs';
 import { runBatched } from './batch.mjs';
 import { classify } from './verdict.mjs';
 import { summarise } from './report.mjs';
-import { ANON_LIMIT } from './auth.mjs';
 
-export const MAX = ANON_LIMIT; // 10
-const TRACE_OPTS = { perHopTimeoutMs: 4000, maxHops: 6, maxRetries: 0 };
+// Cap for this synchronous utility (one GET/POST → inline results). Sized so a
+// whole list can be checked in a single request — e.g. Claude.ai chat builds one
+// fetch for a pasted list and gets the full report back. An overall DEADLINE
+// keeps any request safely inside the ~10s sync-function budget; URLs not
+// finished by then come back BLOCKED ("server time budget reached") rather than
+// hanging or 502-ing. Truly large audits still belong in the async /api/audit
+// flow (WAF batching + archival + Playwright fallback).
+export const MAX = 75;
+export const DEADLINE_MS = 8000;
+const TRACE_OPTS = { perHopTimeoutMs: 3000, maxHops: 6, maxRetries: 1 };
 
 function abs(value, baseUrl) {
   const v = value == null ? '' : String(value).trim();
@@ -37,7 +44,7 @@ export function buildItems(input = {}) {
 }
 
 // Run the checks. Throws Error with a `.status` on validation failure.
-export async function runChecks(input = {}) {
+export async function runChecks(input = {}, { deadlineMs = DEADLINE_MS } = {}) {
   const items = buildItems(input);
   if (!items.length) {
     throw Object.assign(new Error('Provide "urls": [...] or "items": [{ source, expected? }].'), { status: 400 });
@@ -46,19 +53,31 @@ export async function runChecks(input = {}) {
     throw Object.assign(new Error(`Capped at ${MAX} URLs per call. For larger sets use the app's audit flow (/api/audit).`), { status: 413 });
   }
 
-  const results = await runBatched(
-    items,
-    async (item) => {
-      if (!item.source || !/^https?:/i.test(item.source)) {
-        return { ...item, trace: { finalUrl: null, finalStatus: null, hopCount: 0, blocked: false, loop: false, inconclusive: false, error: 'invalid URL — provide a full https:// URL', hops: [] } };
-      }
-      return { ...item, trace: await trace(item.source, TRACE_OPTS) };
-    },
-    {
-      concurrency: 5, startInFlight: 8, maxInFlight: 10, batchSize: 30, cooldownMs: 2000,
-      assess: (r) => (r && r.trace && (r.trace.blocked || r.trace.inconclusive) ? 'blocked' : 'ok'),
-    },
-  );
+  // Overall time budget: abort everything still in flight when it elapses so the
+  // function returns within the sync limit. Unfinished items → inconclusive.
+  const ac = new AbortController();
+  const timer = deadlineMs ? setTimeout(() => ac.abort(), deadlineMs) : null;
+  let results;
+  try {
+    results = await runBatched(
+      items,
+      async (item) => {
+        if (ac.signal.aborted) {
+          return { ...item, trace: { finalUrl: null, finalStatus: null, hopCount: 0, blocked: false, loop: false, inconclusive: true, error: 'server time budget reached — re-run', hops: [] } };
+        }
+        if (!item.source || !/^https?:/i.test(item.source)) {
+          return { ...item, trace: { finalUrl: null, finalStatus: null, hopCount: 0, blocked: false, loop: false, inconclusive: false, error: 'invalid URL — provide a full https:// URL', hops: [] } };
+        }
+        return { ...item, trace: await trace(item.source, { ...TRACE_OPTS, signal: ac.signal }) };
+      },
+      {
+        concurrency: 5, startInFlight: 8, maxInFlight: 12, batchSize: 30, cooldownMs: 2000,
+        assess: (r) => (r && r.trace && (r.trace.blocked || r.trace.inconclusive) ? 'blocked' : 'ok'),
+      },
+    );
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 
   const rows = results.map((r) => {
     const t = r.trace;
