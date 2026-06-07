@@ -15,8 +15,16 @@
 export const BATCH_DEFAULTS = {
   batchSize: 30, // per-domain burst ceiling — safely under the ~40 WAF limit
   concurrency: 4, // per-domain in-flight requests
-  cooldownMs: 4000, // pause between per-domain batches
-  maxInFlight: 16, // global cap on total simultaneous requests across all domains
+  cooldownMs: 4000, // pause between per-domain batches, and after a global throttle signal
+  // Global concurrency is ADAPTIVE (AIMD): start conservative because the
+  // observed throttle is IP/account-level (it bites across different domains),
+  // ramp up by 1 every `rampEvery` consecutive OKs while healthy, and halve +
+  // cool down the moment a request is blocked/times out. This converges on a
+  // rate the edge tolerates instead of hammering a fixed 16 and getting reset.
+  startInFlight: 6,
+  minInFlight: 2,
+  maxInFlight: 12,
+  rampEvery: 12,
 };
 
 export function chunk(items, size) {
@@ -59,29 +67,43 @@ function defaultKeyOf(item) {
 }
 
 /**
- * Process every item with WAF-friendly, domain-aware batching.
+ * Process every item with WAF-friendly, domain-aware, ADAPTIVE batching.
  *
- * Per domain: at most `concurrency` requests in flight, and a `cooldownMs` pause
- * after every `batchSize` requests. Across domains: up to `maxInFlight` requests
- * run simultaneously. Results are returned in input order.
+ * Per domain: at most `concurrency` in flight, with a `cooldownMs` pause after
+ * every `batchSize` requests. Globally: an adaptive in-flight limit (AIMD) that
+ * ramps up while healthy and backs off on a throttle signal. Provide `assess`
+ * to feed that signal back. Results are returned in input order.
  *
  * @param {Array} items
  * @param {(item:any, globalIndex:number)=>Promise<any>} worker
  * @param {object} [opts]
- * @param {number} [opts.batchSize]      per-domain burst ceiling
- * @param {number} [opts.concurrency]    per-domain in-flight
- * @param {number} [opts.cooldownMs]     pause between per-domain batches
- * @param {number} [opts.maxInFlight]    global in-flight cap across all domains
+ * @param {number} [opts.batchSize]   per-domain burst ceiling
+ * @param {number} [opts.concurrency] per-domain in-flight
+ * @param {number} [opts.cooldownMs]  per-domain batch pause / global back-off pause
+ * @param {number} [opts.startInFlight] initial global in-flight
+ * @param {number} [opts.minInFlight]   floor for adaptive back-off
+ * @param {number} [opts.maxInFlight]   ceiling for adaptive ramp-up
+ * @param {number} [opts.rampEvery]     consecutive OKs before +1 global
+ * @param {(result:any)=>('ok'|'blocked')} [opts.assess] throttle signal from a result
  * @param {(item:any, i:number)=>string} [opts.keyOf] override the grouping key
- * @param {(p:{done:number,total:number,domains:number})=>void} [opts.onProgress]
+ * @param {(p:{done:number,total:number,inFlightLimit:number})=>void} [opts.onProgress]
  * @returns {Promise<Array>} results in input order
  */
 export async function runBatched(items, worker, opts = {}) {
   const cfg = { ...BATCH_DEFAULTS, ...opts };
   const keyOf = opts.keyOf || defaultKeyOf;
+  const assess = opts.assess || (() => 'ok');
   const results = new Array(items.length);
   const total = items.length;
   let done = 0;
+
+  // Adaptive global concurrency state.
+  const ceiling = Math.max(1, cfg.maxInFlight);
+  const floor = Math.max(1, Math.min(cfg.minInFlight, ceiling));
+  let limit = Math.max(floor, Math.min(cfg.startInFlight, ceiling));
+  let globalInFlight = 0;
+  let globalCooldownUntil = 0;
+  let oks = 0;
 
   // Group item *indices* by domain, preserving original order within a group.
   const groups = new Map(); // key -> { queue:number[], inFlight, since, cooldownUntil }
@@ -92,24 +114,38 @@ export async function runBatched(items, worker, opts = {}) {
     g.queue.push(i);
   });
 
-  // Pick the next runnable item. Returns {idx, group}, or {wait} if everything
-  // pending is currently saturated/cooling, or {finished:true} when all done.
-  // Synchronous: the caller bumps inFlight before any await, so this is atomic.
+  // Pick the next runnable item. Returns {idx, group}, {wait}, or {finished}.
+  // Synchronous: the caller bumps in-flight counters before any await (atomic).
   function pick() {
+    const now = Date.now();
+    if (globalInFlight >= limit) return { wait: 15 };
+    if (globalCooldownUntil > now) return { wait: Math.max(5, globalCooldownUntil - now) };
     let pending = false;
     let soonest = Infinity;
     for (const g of groups.values()) {
       if (g.queue.length === 0) continue;
       pending = true;
       if (g.inFlight >= cfg.concurrency) continue;
-      const now = Date.now();
       if (g.cooldownUntil > now) { soonest = Math.min(soonest, g.cooldownUntil); continue; }
       g.inFlight++;
+      globalInFlight++;
       return { idx: g.queue.shift(), group: g };
     }
     if (!pending) return { finished: true };
-    const waitFor = soonest === Infinity ? 20 : Math.max(5, soonest - Date.now());
+    const waitFor = soonest === Infinity ? 20 : Math.max(5, soonest - now);
     return { wait: waitFor };
+  }
+
+  // Feed a result's throttle signal into the AIMD controller.
+  function adapt(result) {
+    if (assess(result) === 'blocked') {
+      limit = Math.max(floor, Math.floor(limit / 2));
+      globalCooldownUntil = Date.now() + cfg.cooldownMs;
+      oks = 0;
+    } else if (++oks >= cfg.rampEvery) {
+      limit = Math.min(ceiling, limit + 1);
+      oks = 0;
+    }
   }
 
   async function runner() {
@@ -118,22 +154,26 @@ export async function runBatched(items, worker, opts = {}) {
       if (p.finished) return;
       if (p.wait != null) { await sleep(p.wait); continue; }
       const { idx, group } = p;
+      let result;
       try {
-        results[idx] = await worker(items[idx], idx);
+        result = await worker(items[idx], idx);
+        results[idx] = result;
       } finally {
         group.inFlight--;
+        globalInFlight--;
         done++;
         // Cool the domain down after each full batch, if more work remains.
         if (++group.since >= cfg.batchSize && group.queue.length > 0) {
           group.cooldownUntil = Date.now() + cfg.cooldownMs;
           group.since = 0;
         }
-        if (opts.onProgress) opts.onProgress({ done, total, domains: groups.size });
+        adapt(result);
+        if (opts.onProgress) opts.onProgress({ done, total, inFlightLimit: limit });
       }
     }
   }
 
-  const poolSize = Math.max(1, Math.min(cfg.maxInFlight, total));
+  const poolSize = Math.max(1, Math.min(ceiling, total));
   await Promise.all(Array.from({ length: poolSize }, runner));
   return results;
 }

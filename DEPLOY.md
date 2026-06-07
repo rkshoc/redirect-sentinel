@@ -53,7 +53,7 @@ deep-check job uses this PAT.)
 
    | Variable | Value | Notes |
    |----------|-------|-------|
-   | `GITHUB_TOKEN` | the PAT from step 2 | committing reports + dispatching Actions |
+   | `GITHUB_TOKEN` | the PAT from step 2 | committing reports + dispatching Actions — **must include the `workflow` scope (classic PAT) or Actions: read&write (fine-grained), or the deep-check dispatch silently 403s and blocked rows never resolve** |
    | `REPORTS_OWNER` | your GitHub username/org | e.g. `rkshoc` |
    | `REPORTS_REPO` | `redirect-sentinel-reports` | default already this |
    | `REPORTS_BRANCH` | `main` | optional |
@@ -63,8 +63,9 @@ deep-check job uses this PAT.)
    | `DEFAULT_BASE_URL` | e.g. `https://www.example.com` | optional; resolves relative source/target paths |
    | `BATCH_SIZE` | `30` | optional WAF tuning — per-domain burst ceiling (CLAUDE.md §3) |
    | `BATCH_CONCURRENCY` | `4` | optional — per-domain in-flight requests |
-   | `BATCH_COOLDOWN_MS` | `4000` | optional — pause between per-domain batches |
-   | `MAX_IN_FLIGHT` | `16` | optional — global cap across *all* domains (mixed-domain inputs fan out to here) |
+   | `BATCH_COOLDOWN_MS` | `4000` | optional — pause between per-domain batches / after a throttle back-off |
+   | `START_IN_FLIGHT` | `6` | optional — initial global concurrency (adaptive) |
+   | `MAX_IN_FLIGHT` | `12` | optional — ceiling the adaptive controller may ramp up to while healthy |
    | `HOP_TIMEOUT_MS` | `12000` | optional |
 
 3. **Re-deploy** so the functions pick up the env vars.
@@ -140,14 +141,35 @@ Browser ─GET /api/whoami─▶ whoami (sync) ─ Identity clientContext ─▶
   re-checks server-side and simply **won’t produce a report** for an over-limit
   request that bypassed the UI (CLAUDE.md §4). Identity (and therefore the role)
   is always verified server-side from the Netlify Identity JWT.
-- **Tuning the WAF batching** is purely via the optional env vars in step 4
-  (`BATCH_SIZE` / `BATCH_CONCURRENCY` / `BATCH_COOLDOWN_MS` / `MAX_IN_FLIGHT`).
-  The first three pace requests **per domain** (defaults 30 / 4 / 4000ms sit
-  safely under the observed ~40 ceiling); `MAX_IN_FLIGHT` (default 16) caps total
-  simultaneous requests **across all domains**. Because the Akamai WAF counts
-  per-property, a mixed-domain audit fans out up to `MAX_IN_FLIGHT` while each
-  individual domain still stays paced — large mixed lists finish far faster than
-  a same-size single-domain list, which remains deliberately throttled (CLAUDE.md §3).
+- **Tuning the WAF batching.** Global concurrency is **adaptive (AIMD)**: it
+  starts at `START_IN_FLIGHT` (6), ramps up by 1 while requests stay healthy up
+  to `MAX_IN_FLIGHT` (12), and **halves + cools down the moment requests get
+  blocked or time out** — so it self-tunes to whatever rate the edge tolerates
+  instead of hammering a fixed number and getting reset. Per-domain pacing
+  (`BATCH_SIZE` / `BATCH_CONCURRENCY` / `BATCH_COOLDOWN_MS`, defaults 30 / 4 /
+  4000ms) still applies on top. The engine also **retries** transient
+  timeouts/resets twice before giving up, and a persistent no-response is marked
+  **BLOCKED (inconclusive)** — never a fake FAIL (CLAUDE.md §3, §6). If your edge
+  is more aggressive, lower `START_IN_FLIGHT`/`MAX_IN_FLIGHT`; if it's lenient
+  and you want more speed, raise `MAX_IN_FLIGHT`.
+
+### Troubleshooting the Playwright deep-check
+
+If blocked rows sit "pending" and **no run appears in the app repo's Actions tab**:
+
+1. **Token scope (most common).** The Netlify `GITHUB_TOKEN` must have the
+   `workflow` scope (classic PAT) or **Actions: read & write** (fine-grained PAT).
+   Without it, `workflow_dispatch` returns 403/404, which GitHub obscures. The
+   app now records this as a *"deep-check could not be started"* notice on the
+   report instead of spinning forever — check the report banner, and the Netlify
+   **function logs** for `Deep-check dispatch failed: <status>`.
+2. **`APP_BRANCH`** must name the branch that actually holds `deep-check.yml`.
+3. **`REPORTS_TOKEN`** (an Actions *secret* in the app repo, not a Netlify env
+   var) must have contents-write on the reports repo, or the run starts but
+   can't write results back (run shows red).
+
+A blocked row that never gets deep-checked stays **BLOCKED/inconclusive** — by
+design it is *not* counted as a failure (CLAUDE.md §6).
 
 ## Local dev (optional)
 
