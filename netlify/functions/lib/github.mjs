@@ -111,9 +111,42 @@ export async function dispatchDeepCheck(inputs) {
     headers: headers(cfg.token),
     body: JSON.stringify({ ref: cfg.appBranch, inputs }),
   });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`GitHub dispatch failed: ${res.status} ${text}`);
+  if (res.ok) return true;
+  const text = await res.text().catch(() => '');
+  throw new Error(await explainDispatchFailure(cfg, res.status, text));
+}
+
+/**
+ * Turn a raw dispatch failure into an actionable message. A bare 404 from the
+ * workflow-dispatch API is ambiguous, so we look up how many workflows are
+ * registered to tell the common cases apart:
+ *  - 0 registered  → GitHub Actions is disabled, or the workflow isn't on the
+ *                    repo's DEFAULT branch (workflows only register from there).
+ *  - >0 but ours absent → wrong DEEPCHECK_WORKFLOW / not on the default branch.
+ *  - 403 → the token lacks the `workflow` scope (classic) / Actions:write (FG).
+ *  - 422 → the ref doesn't exist or has no workflow_dispatch trigger.
+ */
+export async function explainDispatchFailure(cfg, status, text = '') {
+  const where = `${cfg.appOwner}/${cfg.appRepo} (workflow "${cfg.workflowFile}", ref "${cfg.appBranch}")`;
+  if (status === 403) {
+    return `GitHub Actions dispatch 403 for ${where}: the GITHUB_TOKEN lacks the "workflow" scope (classic PAT) or "Actions: read & write" (fine-grained PAT). ${text}`.trim();
   }
-  return true;
+  if (status === 422) {
+    return `GitHub Actions dispatch 422 for ${where}: branch "${cfg.appBranch}" may not exist or the workflow has no workflow_dispatch trigger on it. Set APP_BRANCH to a branch that holds ${cfg.workflowFile}. ${text}`.trim();
+  }
+  if (status === 404) {
+    let registered = null;
+    try {
+      const r = await fetch(`${API}/repos/${cfg.appOwner}/${cfg.appRepo}/actions/workflows`, { headers: headers(cfg.token) });
+      if (r.ok) registered = (await r.json()).total_count;
+    } catch { /* best-effort diagnostic only */ }
+    if (registered === 0) {
+      return `GitHub Actions is DISABLED for ${cfg.appOwner}/${cfg.appRepo} (0 workflows registered), so the deep-check can't be dispatched. Fix: repo → Settings → Actions → General → enable "Allow all actions and reusable workflows", and ensure ${cfg.workflowFile} is on the repo's DEFAULT branch.`;
+    }
+    if (registered > 0) {
+      return `Deep-check workflow "${cfg.workflowFile}" not found among ${registered} registered workflow(s) for ${cfg.appOwner}/${cfg.appRepo}. Check the DEEPCHECK_WORKFLOW filename and that it's present on the repo's DEFAULT branch.`;
+    }
+    return `GitHub Actions dispatch 404 for ${where}: workflow not registered (enable Actions + put ${cfg.workflowFile} on the default branch), or APP_OWNER/APP_REPO is wrong, or the token can't see the repo. ${text}`.trim();
+  }
+  return `GitHub dispatch failed: ${status} ${text}`.trim();
 }
