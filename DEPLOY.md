@@ -155,16 +155,25 @@ Browser ─GET /api/whoami─▶ whoami (sync) ─ Identity clientContext ─▶
 
 ### Troubleshooting the Playwright deep-check
 
-If blocked rows sit "pending" and **no run appears in the app repo's Actions tab**:
+If blocked rows sit "pending" and **no run appears in the app repo's Actions tab**.
+The report banner now spells out the cause (the dispatch error is classified);
+the usual ones, in order of likelihood:
 
-1. **Token scope (most common).** The Netlify `GITHUB_TOKEN` must have the
-   `workflow` scope (classic PAT) or **Actions: read & write** (fine-grained PAT).
-   Without it, `workflow_dispatch` returns 403/404, which GitHub obscures. The
-   app now records this as a *"deep-check could not be started"* notice on the
-   report instead of spinning forever — check the report banner, and the Netlify
-   **function logs** for `Deep-check dispatch failed: <status>`.
-2. **`APP_BRANCH`** must name the branch that actually holds `deep-check.yml`.
-3. **`REPORTS_TOKEN`** (an Actions *secret* in the app repo, not a Netlify env
+1. **GitHub Actions is disabled on the app repo (most common — a bare `404`).**
+   If the repo has **no Actions tab**, or its Actions list is empty, no workflow
+   is registered and `workflow_dispatch` 404s. Fix: app repo → **Settings →
+   Actions → General → "Allow all actions and reusable workflows"** (and confirm
+   Actions isn't set to *Disabled*). Workflows only register from the repo's
+   **DEFAULT branch**, so also make sure `deep-check.yml` is on the default
+   branch — set the default branch to wherever you deploy/merge (e.g. `main`)
+   under **Settings → General → Default branch**.
+2. **Token scope.** The Netlify `GITHUB_TOKEN` needs the `workflow` scope
+   (classic PAT) or **Actions: read & write** (fine-grained PAT), else dispatch
+   returns `403`.
+3. **`APP_BRANCH`** must name a branch that holds `deep-check.yml` (a wrong/
+   missing ref shows as `422`); **`APP_OWNER` / `APP_REPO`** must point at the
+   app repo.
+4. **`REPORTS_TOKEN`** (an Actions *secret* in the app repo, not a Netlify env
    var) must have contents-write on the reports repo, or the run starts but
    can't write results back (run shows red).
 

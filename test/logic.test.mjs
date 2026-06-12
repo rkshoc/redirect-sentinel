@@ -6,6 +6,7 @@ import { tagServer, SERVER } from '../netlify/functions/lib/servertag.mjs';
 import { archivePaths, toCSV, summarise } from '../netlify/functions/lib/report.mjs';
 import { chunk, runBatched, registrableDomain } from '../netlify/functions/lib/batch.mjs';
 import { sanitizeUrl, classifyFetchError } from '../netlify/functions/lib/engine.mjs';
+import { explainDispatchFailure } from '../netlify/functions/lib/github.mjs';
 import { buildItems, runChecks, formatResults, MAX } from '../netlify/functions/lib/check-core.mjs';
 import { resolveIdentity, checkLimit, ROLE_LIMITS, ANON_LIMIT, signIdentity, verifyIdentity } from '../netlify/functions/lib/auth.mjs';
 
@@ -250,6 +251,13 @@ test('runChecks honours an overall deadline (unfinished URLs come back inconclus
   assert.ok(elapsed < 4000, `expected prompt return, took ${elapsed}ms`);
   assert.equal(out.results.length, 2);
   assert.ok(out.results.every((r) => r.verdict === 'BLOCKED'), 'unfinished rows should be BLOCKED/inconclusive');
+});
+
+test('explainDispatchFailure gives actionable messages per status', async () => {
+  const cfg = { appOwner: 'me', appRepo: 'app', workflowFile: 'deep-check.yml', appBranch: 'main' };
+  assert.match(await explainDispatchFailure(cfg, 403, ''), /lacks the "workflow" scope/);
+  assert.match(await explainDispatchFailure(cfg, 422, ''), /APP_BRANCH|workflow_dispatch trigger/);
+  assert.match(await explainDispatchFailure(cfg, 500, 'boom'), /GitHub dispatch failed: 500 boom/);
 });
 
 test('formatResults can append the per-hop chain', () => {
