@@ -26,41 +26,43 @@ function safePath(p) {
   return p;
 }
 
-function mergeDeepCheck(report, companion) {
+// Merge a Playwright deep-check companion into the base report at read time.
+// Applies whatever results came back; if the companion also carries an `error`
+// (dispatch failed, the run crashed, or it finished only partially), any row
+// still without a deep result is resolved to a TERMINAL state instead of
+// spinning "pending" forever — it stays BLOCKED (inconclusive, never a FAIL).
+// Exported for unit testing.
+export function mergeDeepCheck(report, companion) {
   if (!companion) return report;
 
-  // The fallback reported a hard error (e.g. dispatch failed — token missing the
-  // `workflow` scope, or the workflow run itself failed) and produced no
-  // results. Resolve to a TERMINAL state so the UI stops waiting: rows stay
-  // BLOCKED (inconclusive, not a FAIL) and we surface the reason.
-  if (companion.error && (!Array.isArray(companion.results) || companion.results.length === 0)) {
-    report.rows = report.rows.map((row) => (row.deepPending ? { ...row, deepPending: false } : row));
-    report.summary = summarise(report.rows);
-    report.status = 'complete';
-    if (report.deepCheck) { report.deepCheck.pending = 0; report.deepCheck.error = companion.error; }
-    return report;
-  }
-
-  if (!Array.isArray(companion.results)) return report;
-  const bySource = new Map(companion.results.map((r) => [r.source, r]));
+  const results = Array.isArray(companion.results) ? companion.results : [];
+  const bySource = new Map(results.map((r) => [r.source, r]));
   let pending = 0;
+
   report.rows = report.rows.map((row) => {
     if (!row.deepPending) return row;
     const dc = bySource.get(row.source);
-    if (!dc) { pending++; return row; } // still waiting
-    return {
-      ...row,
-      finalUrl: dc.finalUrl ?? row.finalUrl,
-      finalStatus: dc.finalStatus ?? row.finalStatus,
-      hopCount: dc.hopCount ?? row.hopCount,
-      verdict: dc.verdict ?? row.verdict,
-      reason: dc.reason ?? row.reason,
-      hops: dc.hops || row.hops,
-      error: dc.error ?? row.error,
-      deepChecked: true,
-      deepPending: false,
-    };
+    if (dc) {
+      return {
+        ...row,
+        finalUrl: dc.finalUrl ?? row.finalUrl,
+        finalStatus: dc.finalStatus ?? row.finalStatus,
+        hopCount: dc.hopCount ?? row.hopCount,
+        verdict: dc.verdict ?? row.verdict,
+        reason: dc.reason ?? row.reason,
+        hops: dc.hops || row.hops,
+        error: dc.error ?? row.error,
+        deepChecked: true,
+        deepPending: false,
+      };
+    }
+    // No deep result for this row. If the run errored, stop waiting (terminal);
+    // otherwise it's still legitimately in flight.
+    if (companion.error) return { ...row, deepPending: false };
+    pending++;
+    return row;
   });
+
   report.summary = summarise(report.rows);
   report.status = pending > 0 ? 'partial' : 'complete';
   if (report.deepCheck) {

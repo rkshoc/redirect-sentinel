@@ -80,6 +80,13 @@ async function traceBrowser(context, url) {
   }
 }
 
+const companionPath = REPORT_PATH.replace(/[^/]+$/, `${REPORT_BASE}.deepcheck.json`);
+// Collected outside the try so a mid-run failure can still write back whatever
+// completed — get-report then flips the report to a TERMINAL state (any row
+// without a result stays BLOCKED) instead of leaving the UI "pending" until its
+// 14-minute poll deadline.
+const results = [];
+
 (async () => {
   const base = await getJson(REPORT_PATH);
   const blocked = base.rows.filter((r) => r.deepPending);
@@ -91,7 +98,6 @@ async function traceBrowser(context, url) {
     locale: 'en-US',
   });
 
-  const results = [];
   // Same batching discipline as the HTTP side (CLAUDE.md §3): low concurrency,
   // small chunks. Sequential here is simplest and well under any WAF window.
   for (const row of blocked) {
@@ -106,7 +112,21 @@ async function traceBrowser(context, url) {
 
   await browser.close();
 
-  const companionPath = REPORT_PATH.replace(/[^/]+$/, `${REPORT_BASE}.deepcheck.json`);
   await putJson(companionPath, { base: REPORT_BASE, completedUtc: new Date().toISOString(), results }, `deep-check ${REPORT_BASE}`);
   console.log(`Wrote ${companionPath} with ${results.length} result(s).`);
-})().catch((e) => { console.error(e); process.exit(1); });
+})().catch(async (e) => {
+  console.error(e);
+  // Best-effort terminal companion: include any partial results + the error so
+  // the report stops waiting. Swallow a secondary write failure.
+  try {
+    await putJson(
+      companionPath,
+      { base: REPORT_BASE, completedUtc: new Date().toISOString(), results, error: e.message },
+      `deep-check ${REPORT_BASE} (error)`,
+    );
+    console.error(`Wrote error companion ${companionPath} (${results.length} partial result(s)).`);
+  } catch (e2) {
+    console.error('Could not write error companion:', e2.message);
+  }
+  process.exit(1);
+});
