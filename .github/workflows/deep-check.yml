@@ -1,9 +1,21 @@
 name: Deep-check (Playwright fallback)
+run-name: "Deep-check ${{ github.event.inputs.report_base || 'manual' }}"
 
 # Triggered by the Netlify Function via workflow_dispatch when the HTTP engine
 # is WAF-blocked (CLAUDE.md §3, §5). Runs Playwright from a GitHub runner — a
 # fresh IP + real browser — and writes a companion results file back to the
 # reports repo. Public repo => unlimited Actions minutes.
+#
+# NOTE: a workflow only becomes dispatchable once it is REGISTERED, which
+# happens when Actions is enabled AND a commit touches this file on the repo's
+# DEFAULT branch. If you enabled Actions after this file already existed, push a
+# fresh commit on the default branch to register it (a bare dispatch 404s).
+
+# Least privilege: the write-back to the SEPARATE reports repo uses the
+# REPORTS_TOKEN secret (a PAT), not the job's GITHUB_TOKEN, so this workflow
+# needs no write scopes of its own.
+permissions:
+  contents: read
 
 on:
   workflow_dispatch:
@@ -46,6 +58,18 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
+          cache: "npm"
+
+      - name: Check REPORTS_TOKEN secret is set
+        # Fail fast with a clear reason rather than a cryptic 404/401 deep in the
+        # script if the secret was never added (DEPLOY.md step 3).
+        env:
+          REPORTS_TOKEN: ${{ secrets.REPORTS_TOKEN }}
+        run: |
+          if [ -z "$REPORTS_TOKEN" ]; then
+            echo "::error::REPORTS_TOKEN secret is not set. Add it under repo → Settings → Secrets and variables → Actions (a PAT with Contents: read & write on the reports repo). See DEPLOY.md step 3."
+            exit 1
+          fi
 
       - name: Install Playwright + Chromium
         run: |
