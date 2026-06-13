@@ -86,6 +86,11 @@ export function combineSheets(files, refMapping) {
   const hasExpected = refMapping.expected != null;
   const multi = files.length > 1;
 
+  // A column's display name, with a stable fallback for blank headers. Used for
+  // BOTH building the extra-key union and looking values back up, so a
+  // blank-headed extra column keeps its data instead of silently dropping out.
+  const colName = (c, i) => String(c).trim() || `Column ${i + 1}`;
+
   // Union of extra column NAMES (original order), i.e. every column that isn't
   // one of the three mapped roles in that file.
   const extraKeys = [];
@@ -93,7 +98,7 @@ export function combineSheets(files, refMapping) {
     const fm = resolveFileMapping(ref.sheet.columns, refMapping, f.sheet.columns);
     f.sheet.columns.forEach((c, i) => {
       if (i === fm.ruleName || i === fm.source || i === fm.expected) return;
-      const name = String(c).trim() || `Column ${i + 1}`;
+      const name = colName(c, i);
       if (!extraKeys.includes(name)) extraKeys.push(name);
     });
   }
@@ -108,7 +113,7 @@ export function combineSheets(files, refMapping) {
       const rec = [fm.ruleName == null ? '' : (r[fm.ruleName] ?? ''), r[fm.source] ?? ''];
       if (hasExpected) rec.push(r[fm.expected] ?? '');
       for (const k of extraKeys) {
-        const ci = f.sheet.columns.findIndex((c) => (String(c).trim() || '') === k);
+        const ci = f.sheet.columns.findIndex((c, i) => colName(c, i) === k);
         rec.push(ci === -1 ? '' : (r[ci] ?? ''));
       }
       if (multi) rec.push(f.name);

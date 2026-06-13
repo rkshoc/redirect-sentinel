@@ -6,7 +6,7 @@ import { tagServer, SERVER } from '../netlify/functions/lib/servertag.mjs';
 import { archivePaths, toCSV, summarise } from '../netlify/functions/lib/report.mjs';
 import { chunk, runBatched, registrableDomain } from '../netlify/functions/lib/batch.mjs';
 import { sanitizeUrl, classifyFetchError } from '../netlify/functions/lib/engine.mjs';
-import { explainDispatchFailure } from '../netlify/functions/lib/github.mjs';
+import { explainDispatchFailure, help404, resolveDispatchRef } from '../netlify/functions/lib/github.mjs';
 import { buildItems, runChecks, formatResults, MAX } from '../netlify/functions/lib/check-core.mjs';
 import { resolveIdentity, checkLimit, ROLE_LIMITS, ANON_LIMIT, signIdentity, verifyIdentity } from '../netlify/functions/lib/auth.mjs';
 
@@ -258,6 +258,31 @@ test('explainDispatchFailure gives actionable messages per status', async () => 
   assert.match(await explainDispatchFailure(cfg, 403, ''), /lacks the "workflow" scope/);
   assert.match(await explainDispatchFailure(cfg, 422, ''), /APP_BRANCH|workflow_dispatch trigger/);
   assert.match(await explainDispatchFailure(cfg, 500, 'boom'), /GitHub dispatch failed: 500 boom/);
+});
+
+test('help404 explains the unregistered-workflow case incl. the fresh-commit nuance', () => {
+  const base = { owner: 'me', repo: 'app', workflowFile: 'deep-check.yml', defaultBranch: 'main' };
+  // 0 registered → the file may be present but was never registered; enabling
+  // Actions alone won't fix it — a fresh commit on the default branch is needed.
+  const none = help404({ ...base, registered: 0 });
+  assert.match(none, /no registered workflows/i);
+  assert.match(none, /does NOT retroactively register/);
+  assert.match(none, /fresh commit/);
+  assert.match(none, /"main"/); // names the actual default branch
+  // >0 but ours absent → wrong filename / not on default branch.
+  const some = help404({ ...base, registered: 3 });
+  assert.match(some, /not among the 3 registered/);
+  // unknown count → generic guidance.
+  assert.match(help404({ ...base, registered: null }), /dispatch 404/);
+  // null default branch degrades to a readable phrase, not "null".
+  assert.match(help404({ ...base, defaultBranch: null, registered: 0 }), /the repo DEFAULT branch/);
+  assert.doesNotMatch(help404({ ...base, defaultBranch: null, registered: 0 }), /"null"/);
+});
+
+test('resolveDispatchRef prefers an explicit APP_BRANCH (no network)', async () => {
+  assert.equal(await resolveDispatchRef({ appBranch: 'release' }), 'release');
+  // No appBranch + no token → default-branch lookup is skipped, falls back to main.
+  assert.equal(await resolveDispatchRef({ appBranch: null, token: '', appOwner: '' }), 'main');
 });
 
 test('formatResults can append the per-hop chain', () => {

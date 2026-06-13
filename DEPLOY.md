@@ -59,7 +59,7 @@ deep-check job uses this PAT.)
    | `REPORTS_BRANCH` | `main` | optional |
    | `APP_OWNER` | your GitHub username/org | defaults to `REPORTS_OWNER` |
    | `APP_REPO` | `redirect-sentinel` | optional |
-   | `APP_BRANCH` | `main` | **must be the branch holding `deep-check.yml`** |
+   | `APP_BRANCH` | _(leave unset)_ | optional override. **Leave unset** and the Function auto-detects the repo's DEFAULT branch (where workflows register) — only set this to force a specific branch that holds `deep-check.yml` |
    | `DEFAULT_BASE_URL` | e.g. `https://www.example.com` | optional; resolves relative source/target paths |
    | `BATCH_SIZE` | `30` | optional WAF tuning — per-domain burst ceiling (CLAUDE.md §3) |
    | `BATCH_CONCURRENCY` | `4` | optional — per-domain in-flight requests |
@@ -159,14 +159,22 @@ If blocked rows sit "pending" and **no run appears in the app repo's Actions tab
 The report banner now spells out the cause (the dispatch error is classified);
 the usual ones, in order of likelihood:
 
-1. **GitHub Actions is disabled on the app repo (most common — a bare `404`).**
-   If the repo has **no Actions tab**, or its Actions list is empty, no workflow
-   is registered and `workflow_dispatch` 404s. Fix: app repo → **Settings →
-   Actions → General → "Allow all actions and reusable workflows"** (and confirm
-   Actions isn't set to *Disabled*). Workflows only register from the repo's
-   **DEFAULT branch**, so also make sure `deep-check.yml` is on the default
-   branch — set the default branch to wherever you deploy/merge (e.g. `main`)
-   under **Settings → General → Default branch**.
+1. **The workflow isn't registered (most common — a bare `404`, "0 workflows registered").**
+   `workflow_dispatch` can only fire a **registered** workflow, and a workflow
+   registers only when **two things are both true**: Actions is enabled **and**
+   a commit touches `deep-check.yml` on the repo's **DEFAULT branch**. The
+   gotcha: **enabling Actions does _not_ retroactively register a workflow that
+   was committed while Actions was off** — the file can be sitting right there on
+   the default branch and still 404. Fix, in order:
+   1. App repo → **Settings → Actions → General → "Allow all actions and
+      reusable workflows"** (confirm it isn't *Disabled*).
+   2. **Settings → General → Default branch** — make sure it's the branch you
+      deploy/merge to (e.g. `main`) and that `deep-check.yml` lives there.
+   3. **Push a fresh commit that touches `.github/workflows/deep-check.yml` on
+      that default branch.** This is what actually registers it. Confirm it
+      worked: the **Actions tab** now lists "Deep-check (Playwright fallback)".
+   The Function dispatches against the repo's auto-detected default branch (or
+   `APP_BRANCH` if you set one), so once registered, no extra config is needed.
 2. **Token scope.** The Netlify `GITHUB_TOKEN` needs the `workflow` scope
    (classic PAT) or **Actions: read & write** (fine-grained PAT), else dispatch
    returns `403`.
