@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Redirect Sentinel</title>
+  <link rel="stylesheet" href="audit.css" />
+</head>
+<body>
+  <div class="wrap">
+    <header class="topbar">
+      <div class="brand">
+        <span class="dot"></span>
+        <h1>Redirect Sentinel</h1>
+        <span class="tag">Playwright engine</span>
+      </div>
+      <button id="settingsToggle" class="ghost" type="button">Settings</button>
+    </header>
+
+    <!-- Settings -->
+    <section id="settings" class="card hidden">
+      <h2>Settings</h2>
+      <label class="field">
+        <span>Site URL <em>(your deployed Redirect Sentinel, e.g. https://your-site.netlify.app)</em></span>
+        <input id="baseUrl" type="url" placeholder="https://your-site.netlify.app" autocomplete="off" />
+      </label>
+
+      <div class="auth">
+        <div id="loggedOut">
+          <p class="muted">Log in to audit more than 10 URLs (uses your Netlify Identity account). Up to 10 works without login.</p>
+          <div class="row">
+            <input id="email" type="email" placeholder="email" autocomplete="username" />
+            <input id="password" type="password" placeholder="password" autocomplete="current-password" />
+            <button id="loginBtn" class="primary" type="button">Log in</button>
+          </div>
+        </div>
+        <div id="loggedIn" class="hidden">
+          <p class="muted">Signed in as <strong id="who"></strong>. <button id="logoutBtn" class="link" type="button">Log out</button></p>
+        </div>
+        <p id="authMsg" class="msg"></p>
+      </div>
+      <div class="row">
+        <button id="saveSettings" class="primary" type="button">Save</button>
+        <span id="settingsMsg" class="msg"></span>
+      </div>
+    </section>
+
+    <!-- Input -->
+    <section class="card">
+      <div class="tabs">
+        <button class="tab active" data-tab="paste" type="button">Paste URLs</button>
+        <button class="tab" data-tab="upload" type="button">Upload Excel / CSV</button>
+      </div>
+
+      <div id="pastePane" class="pane">
+        <label class="field">
+          <span>One URL per line. Optional expected target after a comma or tab: <code>source, expected</code></span>
+          <textarea id="pasteInput" rows="8" placeholder="https://example.com/old-path&#10;https://example.com/a, https://example.com/expected-b"></textarea>
+        </label>
+      </div>
+
+      <div id="uploadPane" class="pane hidden">
+        <input id="fileInput" type="file" accept=".csv,.xlsx,.xls" />
+        <div id="mapPane" class="map hidden">
+          <p class="muted">Confirm which columns hold each field (detected automatically — change if needed):</p>
+          <div class="row">
+            <label class="field small"><span>Rule Name</span><select id="mapRule"></select></label>
+            <label class="field small"><span>Source URL</span><select id="mapSource"></select></label>
+            <label class="field small"><span>Expected Target</span><select id="mapExpected"></select></label>
+          </div>
+          <p id="rowCount" class="muted"></p>
+        </div>
+      </div>
+
+      <div class="row run">
+        <button id="runBtn" class="primary big" type="button">Run scan</button>
+        <span id="runMsg" class="msg"></span>
+      </div>
+      <div id="progress" class="progress hidden">
+        <div class="bar"><div id="barFill" class="fill"></div></div>
+        <span id="progressText" class="muted"></span>
+      </div>
+    </section>
+
+    <!-- Results -->
+    <section id="results" class="card hidden">
+      <div class="resultsHead">
+        <div id="summary" class="summary"></div>
+        <div class="row">
+          <select id="filter">
+            <option value="all">All</option>
+            <option value="fail">Failures</option>
+            <option value="blocked">Blocked</option>
+            <option value="pass">Passed</option>
+          </select>
+          <button id="exportCsv" class="ghost" type="button">Export CSV</button>
+          <button id="exportJson" class="ghost" type="button">Export JSON</button>
+        </div>
+      </div>
+      <div id="tableWrap"></div>
+    </section>
+  </div>
+
+  <script src="lib/xlsx.full.min.js"></script>
+  <script src="audit.js"></script>
+</body>
+</html>

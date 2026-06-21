@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "Redirect Sentinel",
+  "version": "0.1.0",
+  "description": "Audit AEM + Akamai redirects against a spec. Paste URLs or upload an Excel/CSV, scan via GitHub Actions + Playwright, and see verdicts with full hop chains.",
+  "action": {
+    "default_title": "Redirect Sentinel — open audit page"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "permissions": ["storage"],
+  "host_permissions": ["https://*/*", "http://localhost/*", "http://127.0.0.1/*"],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  }
+}
