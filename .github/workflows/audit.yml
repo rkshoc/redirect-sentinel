@@ -1,0 +1,79 @@
+name: Audit (Playwright engine)
+run-name: "Audit ${{ github.event.inputs.report_base || 'manual' }}"
+
+# Primary audit engine (CLAUDE.md §2/§3 evolution): the Netlify dispatch stages
+# the input in the reports repo and fires this workflow; Playwright traces every
+# URL from a fresh runner IP and writes the report back. Public repo => unlimited
+# minutes. The prebuilt Playwright container ships the browsers, so there's no
+# multi-minute `playwright install` — only the small JS package is added.
+#
+# NOTE: like any workflow_dispatch, this only becomes dispatchable once Actions
+# is enabled AND a commit places this file on the repo's DEFAULT branch.
+
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+    inputs:
+      input_path:
+        description: "Path of the staged audit input in the reports repo (YYYY/MM/DD/...input.json)"
+        required: true
+      report_path:
+        description: "Path to write the report JSON to (YYYY/MM/DD/...json)"
+        required: true
+      report_base:
+        description: "Base filename (without extension)"
+        required: true
+      reports_owner:
+        description: "Owner of the reports repo"
+        required: true
+      reports_repo:
+        description: "Name of the reports repo"
+        required: true
+      reports_branch:
+        description: "Branch of the reports repo"
+        required: false
+        default: "main"
+
+concurrency:
+  # One run per report; never cancel an in-flight audit.
+  group: audit-${{ github.event.inputs.report_base }}
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container:
+      # Browsers preinstalled at $PLAYWRIGHT_BROWSERS_PATH — keep the tag in sync
+      # with the playwright npm version installed below.
+      image: mcr.microsoft.com/playwright:v1.49.0-jammy
+    steps:
+      - name: Checkout app repo (shared verdict/servertag/report logic)
+        uses: actions/checkout@v4
+
+      - name: Check REPORTS_TOKEN secret is set
+        env:
+          REPORTS_TOKEN: ${{ secrets.REPORTS_TOKEN }}
+        run: |
+          if [ -z "$REPORTS_TOKEN" ]; then
+            echo "::error::REPORTS_TOKEN secret is not set. Add it under repo → Settings → Secrets and variables → Actions (a PAT with Contents: read & write on the reports repo). See DEPLOY.md."
+            exit 1
+          fi
+
+      - name: Install Playwright JS package (browsers already in the image)
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+        run: npm install playwright@1.49.0 --no-save --no-audit --no-fund
+
+      - name: Run audit
+        env:
+          REPORTS_TOKEN: ${{ secrets.REPORTS_TOKEN }}
+          REPORTS_OWNER: ${{ github.event.inputs.reports_owner }}
+          REPORTS_REPO: ${{ github.event.inputs.reports_repo }}
+          REPORTS_BRANCH: ${{ github.event.inputs.reports_branch }}
+          INPUT_PATH: ${{ github.event.inputs.input_path }}
+          REPORT_PATH: ${{ github.event.inputs.report_path }}
+          REPORT_BASE: ${{ github.event.inputs.report_base }}
+        run: node .github/scripts/audit-playwright.mjs

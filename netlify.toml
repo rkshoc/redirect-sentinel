@@ -22,6 +22,14 @@
 # 15 minutes without the 10s sync-function timeout. It returns 202 immediately;
 # the browser polls get-report for the result.
 
+# Primary audit path: a THIN sync function that dispatches the Playwright engine
+# on GitHub Actions and returns the report path to poll (no tracing on Netlify).
+[[redirects]]
+  from = "/api/audit-dispatch"
+  to = "/.netlify/functions/audit-dispatch"
+  status = 200
+
+# Legacy in-Netlify HTTP engine (background function). Kept as an alternate path.
 [[redirects]]
   from = "/api/audit"
   to = "/.netlify/functions/audit-background"

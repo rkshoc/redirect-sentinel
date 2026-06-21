@@ -42,18 +42,18 @@ async function gzipBase64(str) {
   return btoa(bin);
 }
 
-// POST the audit to the background worker. Returns the raw Response so the caller
-// can distinguish 202 (accepted) from a synchronous 4xx rejection.
-// Netlify background functions cap the request body at 256 KB; URL lists compress
-// ~10x (shared domains/targets), so we gzip large payloads to fit. The worker
-// transparently gunzips a { gz } body.
+// POST the audit to the dispatch endpoint, which stages the input and fires the
+// Playwright-on-Actions engine, returning 202 + the report path to poll (or a
+// synchronous 4xx for an over-limit request / 502 if the engine can't be
+// dispatched). Large URL lists compress ~10x, so we gzip big payloads; the
+// function transparently gunzips a { gz } body.
 export async function postAudit(payload) {
   const json = JSON.stringify(payload);
   let body = json;
   if (json.length > 150000 && typeof CompressionStream !== 'undefined') {
     try { body = JSON.stringify({ gz: await gzipBase64(json) }); } catch { body = json; }
   }
-  return fetch('/api/audit', {
+  return fetch('/api/audit-dispatch', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
     body,

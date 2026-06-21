@@ -10,6 +10,7 @@ import { explainDispatchFailure, help404, resolveDispatchRef } from '../netlify/
 import { buildItems, runChecks, formatResults, MAX } from '../netlify/functions/lib/check-core.mjs';
 import { resolveIdentity, checkLimit, ROLE_LIMITS, ANON_LIMIT, signIdentity, verifyIdentity } from '../netlify/functions/lib/auth.mjs';
 import { mergeDeepCheck } from '../netlify/functions/get-report.mjs';
+import { buildItems as buildAuditItems, rowFromResult, buildReport } from '../netlify/functions/lib/audit.mjs';
 
 process.env.INTERNAL_TOKEN = 'test-signing-secret';
 
@@ -350,6 +351,66 @@ test('mergeDeepCheck terminalises everything on an error with no results', () =>
   assert.equal(r.deepCheck.pending, 0);
   assert.ok(r.rows.every((row) => !row.deepPending));
   assert.equal(r.rows[0].verdict, 'BLOCKED');
+});
+
+// ---------- shared audit lib (dispatch + Actions engine) ----------
+test('buildItems: paste mode trims, drops blanks, carries raw', () => {
+  const items = buildAuditItems({ mode: 'paste', urls: ['https://a.com/x', '  ', ' https://b.com/y '] });
+  assert.equal(items.length, 2);
+  assert.equal(items[0].source, 'https://a.com/x');
+  assert.equal(items[1].source, 'https://b.com/y');
+  assert.equal(items[0].expected, null);
+});
+
+test('buildItems: sheet mode maps cols, carries extras, drops incomplete rows', () => {
+  const payload = {
+    mode: 'sheet',
+    columns: ['Rule', 'Source', 'Expected', 'Notes'],
+    mapping: { ruleName: 0, source: 1, expected: 2 },
+    rows: [
+      ['R1', 'https://a.com/s', 'https://a.com/t', 'note1'],
+      ['R2', '', 'https://a.com/t', 'blank source -> dropped'],
+      ['R3', 'https://a.com/s3', '', 'blank expected -> dropped'],
+    ],
+  };
+  const items = buildAuditItems(payload);
+  assert.equal(items.length, 1);
+  assert.equal(items[0].ruleName, 'R1');
+  assert.equal(items[0].source, 'https://a.com/s');
+  assert.equal(items[0].expected, 'https://a.com/t');
+  assert.deepEqual(items[0].extra, { Notes: 'note1' });
+});
+
+test('buildItems: resolves relative source/expected against baseUrl', () => {
+  const items = buildAuditItems({ mode: 'paste', urls: ['/path'], baseUrl: 'https://www.example.com' });
+  assert.equal(items[0].source, 'https://www.example.com/path');
+});
+
+test('rowFromResult: maps a Playwright trace to a strict-verdict row (terminal)', () => {
+  const row = rowFromResult({
+    ruleName: 'R1', source: 'https://a.com/s', expected: 'https://a.com/t', extra: { Notes: 'n' },
+    trace: { finalUrl: 'https://a.com/t', finalStatus: 200, hopCount: 2, blocked: false, loop: false, error: null,
+      hops: [{ n: 1, url: 'https://a.com/s', status: 301, server: 'akamai', timeMs: 10 }] },
+  });
+  assert.equal(row.verdict, 'PASS');
+  assert.equal(row.deepPending, false); // Playwright engine is terminal
+  assert.equal(row.deepChecked, false);
+  assert.equal(row.finalUrl, 'https://a.com/t');
+  assert.deepEqual(row.extra, { Notes: 'n' });
+});
+
+test('buildReport assembles a complete report with summary', () => {
+  const rows = [
+    rowFromResult({ source: 'a', expected: 'a', trace: { finalUrl: 'a', finalStatus: 200, hopCount: 1 } }),
+    rowFromResult({ source: 'b', expected: 'c', trace: { finalUrl: 'd', finalStatus: 200, hopCount: 2 } }),
+  ];
+  const report = buildReport({ id: 'zz00', base: 'audit_x', createdUtc: '2026-06-15T00:00:00Z', user: 'me', engine: 'playwright', mode: 'paste' }, rows);
+  assert.equal(report.status, 'complete');
+  assert.equal(report.engine, 'playwright');
+  assert.equal(report.summary.checked, 2);
+  assert.equal(report.summary.passed, 1);
+  assert.equal(report.summary.failed, 1);
+  assert.equal(report.rows.length, 2);
 });
 
 // ---------- auth ----------

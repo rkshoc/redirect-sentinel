@@ -48,9 +48,11 @@ export function useAuditRun({ onReport }) {
 
   const startProgress = useCallback((n) => {
     const batches = Math.ceil(n / 30);
-    const estMs = 6000 /* cold start */ + batches * 4000 /* cooldowns */ + n * 700; /* per-URL */
+    // The audit runs in a real browser on a GitHub Actions runner: budget for the
+    // runner cold start + per-URL browser navigation (slower than raw HTTP).
+    const estMs = 60000 /* runner cold start + browser */ + batches * 4000 /* cooldowns */ + n * 1500; /* per-URL */
     const start = Date.now();
-    setProgress({ show: true, phase: 'Tracing redirects via HTTP…', total: n, batches, fillPct: 0, elapsed: '0:00', eta: fmtTime(estMs) });
+    setProgress({ show: true, phase: 'Scanning in a real browser on GitHub Actions…', total: n, batches, fillPct: 0, elapsed: '0:00', eta: fmtTime(estMs) });
     progTimer.current = setInterval(() => {
       const elapsed = Date.now() - start;
       setProgress((p) => ({
@@ -142,13 +144,16 @@ export function useAuditRun({ onReport }) {
     } catch (e) {
       stopProgress(); setRunning(false); setError(`Network error: ${e.message}`); return;
     }
-    // 202 = accepted (background started); 4xx (not 404) = synchronous rejection.
+    // 202 = accepted (engine dispatched); 4xx (not 404) = synchronous rejection;
+    // 502 = engine couldn't be dispatched (e.g. workflow not registered).
     if (res.status >= 400 && res.status !== 404) {
       stopProgress(); setRunning(false);
       setError((await res.json().catch(() => ({}))).error || `Request rejected (HTTP ${res.status}).`);
       return;
     }
-    pollReport(path);
+    // Prefer the server's authoritative report path; fall back to the predicted one.
+    const body = await res.json().catch(() => ({}));
+    pollReport(body.report || path);
   }, [startProgress, stopProgress, pollReport]);
 
   return { run, running, progress, error, clearError: () => setError('') };

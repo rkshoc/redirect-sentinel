@@ -131,14 +131,14 @@ export async function resolveDispatchRef(cfg = ghConfig()) {
 }
 
 /**
- * Dispatch the Playwright deep-check workflow for a set of blocked URLs
- * (CLAUDE.md §3). Inputs must be strings, so the payload is JSON-stringified.
+ * Dispatch any workflow_dispatch workflow in the app repo by filename, against
+ * the auto-detected default branch (or APP_BRANCH). Inputs must be strings.
  */
-export async function dispatchDeepCheck(inputs) {
+export async function dispatchWorkflow(workflowFile, inputs) {
   const cfg = ghConfig();
   if (!cfg.token || !cfg.appOwner) throw new Error('GitHub dispatch not configured.');
   const ref = await resolveDispatchRef(cfg);
-  const url = `${API}/repos/${cfg.appOwner}/${cfg.appRepo}/actions/workflows/${cfg.workflowFile}/dispatches`;
+  const url = `${API}/repos/${cfg.appOwner}/${cfg.appRepo}/actions/workflows/${workflowFile}/dispatches`;
   const res = await fetch(url, {
     method: 'POST',
     headers: headers(cfg.token),
@@ -146,8 +146,16 @@ export async function dispatchDeepCheck(inputs) {
   });
   if (res.ok) return true;
   const text = await res.text().catch(() => '');
-  // Diagnose against the ref we actually used.
-  throw new Error(await explainDispatchFailure({ ...cfg, appBranch: ref }, res.status, text));
+  // Diagnose against the ref + workflow we actually used.
+  throw new Error(await explainDispatchFailure({ ...cfg, appBranch: ref, workflowFile }, res.status, text));
+}
+
+/**
+ * Dispatch the Playwright deep-check workflow for a set of blocked URLs
+ * (CLAUDE.md §3). Inputs must be strings, so the payload is JSON-stringified.
+ */
+export async function dispatchDeepCheck(inputs) {
+  return dispatchWorkflow(ghConfig().workflowFile, inputs);
 }
 
 /**

@@ -17,52 +17,7 @@ import { classify, VERDICT } from './lib/verdict.mjs';
 import { resolveIdentity, verifyIdentity, checkLimit, shortId } from './lib/auth.mjs';
 import { archivePaths, summarise, toCSV } from './lib/report.mjs';
 import { putFile, dispatchDeepCheck, ghConfig } from './lib/github.mjs';
-
-// Resolve a possibly-relative URL against the audit's base URL.
-function abs(value, baseUrl) {
-  const v = value == null ? '' : String(value).trim();
-  if (!v) return null;
-  try {
-    return new URL(v, baseUrl || undefined).toString();
-  } catch {
-    return null;
-  }
-}
-
-// Turn the client payload into a flat list of audit items.
-function buildItems(payload) {
-  const baseUrl = payload.baseUrl || process.env.DEFAULT_BASE_URL || '';
-  if (payload.mode === 'paste') {
-    const urls = (payload.urls || []).map((u) => String(u).trim()).filter(Boolean);
-    return urls.map((u) => ({ ruleName: '', source: abs(u, baseUrl) || u, rawSource: u, expected: null, extra: {} }));
-  }
-  // sheet mode
-  const cols = payload.columns || [];
-  const map = payload.mapping || {};
-  const ruleIdx = map.ruleName;
-  const srcIdx = map.source;
-  const expIdx = map.expected;
-  const extraIdx = cols.map((_, i) => i).filter((i) => i !== ruleIdx && i !== srcIdx && i !== expIdx);
-  return (payload.rows || []).filter((row) => {
-    // Ignore blank/incomplete rows (large sheets often have thousands) so they
-    // don't count against the tier limit or generate wasted requests.
-    if (String(row[srcIdx] ?? '').trim() === '') return false;
-    if (expIdx != null && String(row[expIdx] ?? '').trim() === '') return false;
-    return true;
-  }).map((row) => {
-    const extra = {};
-    for (const i of extraIdx) extra[cols[i] || `col${i}`] = row[i] ?? '';
-    const rawSource = row[srcIdx] ?? '';
-    const rawExpected = expIdx == null ? null : (row[expIdx] ?? '');
-    return {
-      ruleName: ruleIdx == null ? '' : (row[ruleIdx] ?? ''),
-      source: abs(rawSource, baseUrl) || rawSource,
-      rawSource,
-      expected: rawExpected ? (abs(rawExpected, baseUrl) || rawExpected) : null,
-      extra,
-    };
-  });
-}
+import { buildItems } from './lib/audit.mjs';
 
 function batchOpts() {
   return {
